@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>YT → MP3</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, sans-serif;
+      background: #0f0f0f;
+      color: #e0e0e0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem 1rem;
+    }
+
+    h1 { font-size: 1.8rem; margin-bottom: 0.25rem; color: #fff; }
+    .subtitle { color: #888; margin-bottom: 2rem; font-size: 0.9rem; }
+
+    .card {
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 12px;
+      padding: 1.5rem;
+      width: 100%;
+      max-width: 680px;
+      margin-bottom: 1.25rem;
+    }
+
+    .url-row { display: flex; gap: 0.5rem; }
+
+    input[type="url"] {
+      flex: 1;
+      padding: 0.65rem 1rem;
+      border-radius: 8px;
+      border: 1px solid #333;
+      background: #111;
+      color: #e0e0e0;
+      font-size: 0.95rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    input[type="url"]:focus { border-color: #e63946; }
+
+    button {
+      padding: 0.65rem 1.25rem;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-weight: 600;
+      transition: opacity 0.2s;
+    }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    .btn-primary { background: #e63946; color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: #c1121f; }
+    .btn-secondary { background: #2a2a2a; color: #ccc; }
+    .btn-secondary:hover:not(:disabled) { background: #333; }
+
+    /* Info panel */
+    #info-panel { display: none; }
+    .info-header { margin-bottom: 1rem; }
+    .info-header h2 { font-size: 1.1rem; color: #fff; }
+    .info-header p  { font-size: 0.8rem; color: #888; margin-top: 0.2rem; }
+
+    .track-list { display: flex; flex-direction: column; gap: 0.5rem; max-height: 320px; overflow-y: auto; }
+    .track-list::-webkit-scrollbar { width: 6px; }
+    .track-list::-webkit-scrollbar-track { background: #111; }
+    .track-list::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+
+    .track-item {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      background: #111;
+      border-radius: 8px;
+      padding: 0.5rem 0.75rem;
+      font-size: 0.85rem;
+    }
+    .track-item input[type="checkbox"] { accent-color: #e63946; width: 15px; height: 15px; flex-shrink: 0; }
+    .track-thumb {
+      width: 44px; height: 44px;
+      border-radius: 4px;
+      object-fit: cover;
+      flex-shrink: 0;
+      background: #222;
+    }
+    .track-info { flex: 1; overflow: hidden; }
+    .track-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #ddd; }
+    .track-meta  { font-size: 0.75rem; color: #666; margin-top: 0.15rem; }
+    .track-dur   { font-size: 0.78rem; color: #555; flex-shrink: 0; }
+
+    .action-row { display: flex; gap: 0.5rem; margin-top: 1rem; align-items: center; flex-wrap: wrap; }
+    .sel-count   { font-size: 0.8rem; color: #666; margin-left: auto; }
+
+    /* Progress panel */
+    #progress-panel { display: none; }
+    #progress-panel h3 { font-size: 1rem; margin-bottom: 1rem; color: #fff; }
+
+    .prog-item {
+      background: #111;
+      border-radius: 8px;
+      padding: 0.65rem 0.85rem;
+      margin-bottom: 0.5rem;
+      font-size: 0.85rem;
+    }
+    .prog-title { display: flex; justify-content: space-between; margin-bottom: 0.35rem; }
+    .prog-name  { color: #ddd; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; margin-right: 0.5rem; }
+    .prog-status{ font-size: 0.75rem; color: #888; flex-shrink: 0; }
+    .prog-bar-bg{ height: 4px; background: #2a2a2a; border-radius: 2px; overflow: hidden; }
+    .prog-bar   { height: 100%; background: #e63946; width: 0%; transition: width 0.3s; border-radius: 2px; }
+    .prog-bar.done { background: #2a9d8f; }
+    .prog-bar.error{ background: #e63946; }
+
+    #all-done-msg { display: none; margin-top: 1rem; padding: 0.75rem 1rem; background: #1a3a35; border-radius: 8px; color: #2a9d8f; font-size: 0.9rem; }
+
+    /* Files panel */
+    #files-panel { display: none; }
+    #files-panel h3 { font-size: 1rem; margin-bottom: 0.75rem; color: #fff; }
+    .file-item { display: flex; justify-content: space-between; align-items: center; padding: 0.45rem 0; border-bottom: 1px solid #222; font-size: 0.85rem; }
+    .file-item:last-child { border-bottom: none; }
+    .file-name { color: #ccc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; margin-right: 1rem; }
+    .file-size { color: #555; flex-shrink: 0; }
+
+    #error-msg { display: none; margin-top: 0.75rem; padding: 0.65rem 1rem; background: #2a1010; border-radius: 8px; color: #e63946; font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+
+  <h1>YT → MP3</h1>
+  <p class="subtitle">Download audio from YouTube or YouTube Music</p>
+
+  <!-- URL input -->
+  <div class="card">
+    <div class="url-row">
+      <input type="url" id="url-input" placeholder="https://www.youtube.com/watch?v=... or playlist URL" />
+      <button class="btn-primary" id="fetch-btn" onclick="fetchInfo()">Fetch</button>
+    </div>
+    <div id="error-msg"></div>
+  </div>
+
+  <!-- Track list -->
+  <div class="card" id="info-panel">
+    <div class="info-header">
+      <h2 id="info-title"></h2>
+      <p id="info-meta"></p>
+    </div>
+    <div class="track-list" id="track-list"></div>
+    <div class="action-row">
+      <button class="btn-secondary" onclick="selectAll(true)">Select all</button>
+      <button class="btn-secondary" onclick="selectAll(false)">Deselect all</button>
+      <button class="btn-primary" id="dl-btn" onclick="startDownload()">⬇ Download selected</button>
+      <span class="sel-count" id="sel-count"></span>
+    </div>
+  </div>
+
+  <!-- Progress -->
+  <div class="card" id="progress-panel">
+    <h3>Downloading…</h3>
+    <div id="prog-list"></div>
+    <div id="all-done-msg">✅ All done! Files saved to the downloads folder.</div>
+    <div style="margin-top:0.75rem;display:flex;gap:0.5rem;flex-wrap:wrap;">
+      <button class="btn-secondary" onclick="showFiles()">📂 View files</button>
+      <button class="btn-secondary" onclick="resetUI()">⟳ New download</button>
+    </div>
+  </div>
+
+  <!-- File list -->
+  <div class="card" id="files-panel">
+    <h3>Downloaded files</h3>
+    <div id="file-list"></div>
+    <div style="margin-top:0.75rem;">
+      <button class="btn-secondary" onclick="document.getElementById('files-panel').style.display='none'">Close</button>
+    </div>
+  </div>
+
+<script>
+  let tracks = [];   // [{url, title, thumbnail, duration, uploader}]
+
+  function showError(msg) {
+    const el = document.getElementById('error-msg');
+    el.textContent = msg;
+    el.style.display = msg ? 'block' : 'none';
+  }
+
+  function updateSelCount() {
+    const boxes = document.querySelectorAll('.track-cb');
+    const checked = [...boxes].filter(b => b.checked).length;
+    document.getElementById('sel-count').textContent = `${checked} / ${boxes.length} selected`;
+    document.getElementById('dl-btn').disabled = checked === 0;
+  }
+
+  function selectAll(val) {
+    document.querySelectorAll('.track-cb').forEach(b => b.checked = val);
+    updateSelCount();
+  }
+
+  async function fetchInfo() {
+    const url = document.getElementById('url-input').value.trim();
+    if (!url) { showError('Please enter a URL.'); return; }
+    showError('');
+    const btn = document.getElementById('fetch-btn');
+    btn.disabled = true; btn.textContent = 'Loading…';
+    document.getElementById('info-panel').style.display = 'none';
+
+    try {
+      const res = await fetch('/api/info', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({url})
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) { showError(data.error || 'Failed to fetch info.'); return; }
+
+      tracks = data.tracks;
+      document.getElementById('info-title').textContent = data.title || 'Untitled';
+      document.getElementById('info-meta').textContent =
+        data.type === 'playlist'
+          ? `Playlist · ${data.count} track${data.count !== 1 ? 's' : ''}${data.uploader ? ' · ' + data.uploader : ''}`
+          : (data.tracks[0]?.uploader || '');
+
+      const list = document.getElementById('track-list');
+      list.innerHTML = '';
+      tracks.forEach((t, i) => {
+        const item = document.createElement('div');
+        item.className = 'track-item';
+        item.innerHTML = `
+          <input type="checkbox" class="track-cb" data-i="${i}" checked onchange="updateSelCount()" />
+          ${t.thumbnail ? `<img class="track-thumb" src="${t.thumbnail}" loading="lazy" onerror="this.style.display='none'" />` : ''}
+          <div class="track-info">
+            <div class="track-title" title="${escHtml(t.title)}">${escHtml(t.title)}</div>
+            ${t.uploader ? `<div class="track-meta">${escHtml(t.uploader)}</div>` : ''}
+          </div>
+          ${t.duration ? `<div class="track-dur">${t.duration}</div>` : ''}
+        `;
+        list.appendChild(item);
+      });
+
+      document.getElementById('info-panel').style.display = 'block';
+      updateSelCount();
+    } catch (e) {
+      showError('Network error: ' + e.message);
+    } finally {
+      btn.disabled = false; btn.textContent = 'Fetch';
+    }
+  }
+
+  async function startDownload() {
+    const checked = [...document.querySelectorAll('.track-cb')].filter(b => b.checked);
+    if (!checked.length) return;
+
+    const selected = checked.map(b => tracks[+b.dataset.i]);
+    const urls = selected.map(t => t.url);
+    const titlesMap = {};
+    selected.forEach(t => titlesMap[t.url] = t.title);
+
+    document.getElementById('info-panel').style.display = 'none';
+    const panel = document.getElementById('progress-panel');
+    panel.style.display = 'block';
+    document.getElementById('all-done-msg').style.display = 'none';
+
+    // Build progress rows
+    const progList = document.getElementById('prog-list');
+    progList.innerHTML = '';
+    selected.forEach(t => {
+      const row = document.createElement('div');
+      row.className = 'prog-item';
+      row.id = 'prog-' + encodeURIComponent(t.url);
+      row.innerHTML = `
+        <div class="prog-title">
+          <span class="prog-name">${escHtml(t.title)}</span>
+          <span class="prog-status" id="stat-${encodeURIComponent(t.url)}">Queued</span>
+        </div>
+        <div class="prog-bar-bg"><div class="prog-bar" id="bar-${encodeURIComponent(t.url)}"></div></div>
+      `;
+      progList.appendChild(row);
+    });
+
+    // Start download
+    const res = await fetch('/api/download', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({urls, titles: titlesMap})
+    });
+    const {session_id, error} = await res.json();
+    if (error) { showError(error); return; }
+
+    // Stream progress
+    const es = new EventSource(`/api/progress/${session_id}`);
+    es.onmessage = e => {
+      const msg = JSON.parse(e.data);
+      const key = encodeURIComponent(msg.url || '');
+      const bar  = document.getElementById('bar-'  + key);
+      const stat = document.getElementById('stat-' + key);
+
+      if (msg.type === 'started') {
+        if (stat) stat.textContent = 'Starting…';
+      } else if (msg.type === 'progress') {
+        if (bar)  bar.style.width = msg.percent + '%';
+        if (stat) stat.textContent = `${Math.round(msg.percent)}% · ${msg.speed}`;
+      } else if (msg.type === 'converting') {
+        if (bar)  { bar.style.width = '100%'; }
+        if (stat) stat.textContent = 'Converting…';
+      } else if (msg.type === 'track_done') {
+        if (bar)  { bar.style.width = '100%'; bar.classList.add('done'); }
+        if (stat) stat.textContent = '✓ Done';
+      } else if (msg.type === 'track_error') {
+        if (bar)  bar.classList.add('error');
+        if (stat) stat.textContent = '✗ Error';
+      } else if (msg.type === 'all_done') {
+        document.getElementById('all-done-msg').style.display = 'block';
+        es.close();
+      }
+    };
+    es.onerror = () => es.close();
+  }
+
+  async function showFiles() {
+    const res = await fetch('/api/files');
+    const files = await res.json();
+    const list = document.getElementById('file-list');
+    list.innerHTML = files.length === 0
+      ? '<p style="color:#555;font-size:0.85rem;">No files found.</p>'
+      : files.map(f => `
+          <div class="file-item">
+            <span class="file-name">${escHtml(f.name)}</span>
+            <span class="file-size">${(f.size / 1024 / 1024).toFixed(1)} MB</span>
+          </div>`).join('');
+    document.getElementById('files-panel').style.display = 'block';
+  }
+
+  function resetUI() {
+    document.getElementById('progress-panel').style.display = 'none';
+    document.getElementById('files-panel').style.display = 'none';
+    document.getElementById('info-panel').style.display = 'none';
+    document.getElementById('url-input').value = '';
+    showError('');
+    tracks = [];
+  }
+
+  function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // Allow Enter key in URL field
+  document.getElementById('url-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') fetchInfo();
+  });
+</script>
+</body>
+</html>
