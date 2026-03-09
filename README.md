@@ -81,3 +81,13 @@ Some videos are region-locked or age-restricted and cannot be downloaded. The ap
 - No login, no tracking
 - Files are deleted from the server the moment your download starts
 - Nothing about your downloads is stored or logged
+
+
+
+
+## Small ERROR with Render Deployment and Cookies. 
+It's recommended to deploy locally via docker and have localhost frontend
+```bash
+docker compose up --build
+```
+Opens on `http://localhost:5000`
