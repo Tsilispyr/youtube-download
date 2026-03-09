@@ -759,7 +759,11 @@
 
         tracks = data.tracks || [];
         trackState = {};
-        tracks.forEach(t => trackState[t.url] = 'idle');
+        selected.clear();
+        tracks.forEach(t => {
+          trackState[t.url] = 'idle';
+          selected.add(t.url);
+        });
         currentPlaylistTitle = data.type === 'playlist' ? (data.title || '') : '';
         currentPlaylistThumbnail = data.thumbnail || '';
         currentType = data.type || 'single';
@@ -878,18 +882,21 @@
     }
 
     function updateTrackUI(url) {
-      const state = trackState[t.url] || 'idle';
-      const item = document.querySelector(`.track-item[data-url="${CSS.escape(url)}"]`);
-      if (!item) return;
       const isChecked = selected.has(url);
-      item.classList.toggle('selected', isChecked);
-      const cb = item.querySelector('.track-cb');
-      if (cb) cb.checked = isChecked;
+      const item = document.querySelector(`.track-item[data-url="${CSS.escape(url)}"]`);
+      if (item) {
+        item.classList.toggle('selected', isChecked);
+        const cb = item.querySelector('.track-cb');
+        if (cb) cb.checked = isChecked;
+      }
+
       const selectAllCb = el('selectAll');
-      const all = tracks.every(t => isSelected(t.url));
-      const some = tracks.some(t => isSelected(t.url));
-      selectAllCb.checked = all;
-      selectAllCb.indeterminate = some && !all;
+      if (selectAllCb && tracks.length > 0) {
+        const all = tracks.every(t => isSelected(t.url));
+        const some = tracks.some(t => isSelected(t.url));
+        selectAllCb.checked = all;
+        selectAllCb.indeterminate = some && !all;
+      }
     }
 
     function escHtml(s) {
@@ -1011,7 +1018,10 @@
         if (msg.type === 'all_done') {
           sse.close();
           el('dlBtn').disabled = false;
-          updateOverallStatus('All done ✓ — check your Downloads folder', totalCount, totalCount);
+          const doneMsg = (useFallbackZip && currentType === 'playlist')
+            ? 'All done ✓ — unzip the file to find your MP3s'
+            : 'All done ✓ — check your Downloads folder';
+          updateOverallStatus(doneMsg, totalCount, totalCount);
         }
 
         if (msg.type === 'error') {
@@ -1027,6 +1037,16 @@
       };
     }
 
+    // ── Platform detection ────────────────────────
+    // iOS Safari and desktop Safari don't support <a download> on blob URLs —
+    // files open inline in the browser instead of saving.
+    // For those platforms we fall back to serving the zip directly so the
+    // browser's own download mechanism handles it.
+    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+                  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const useFallbackZip = isSafari || isIOS;
+
     // ── Single file download ───────────────────────
     function triggerDownload(url, filename) {
       const a = document.createElement('a');
@@ -1038,9 +1058,19 @@
     }
 
     // ── Playlist: fetch zip → unpack in browser → save each file ──────────────
-    // Files are saved one at a time with a short delay so the browser
-    // doesn't block rapid-fire download attempts.
+    // On Safari/iOS blob URLs don't trigger Save dialogs, so we serve the zip
+    // directly instead — the browser's native download handles it.
+    // On other browsers, files are saved one at a time with a short delay so
+    // the browser doesn't block rapid-fire download attempts.
     async function unpackAndDownload(zipUrl, zipFilename, onProgress) {
+      if (useFallbackZip) {
+        // Safari / iOS: navigate directly to the zip — Content-Disposition: attachment
+        // makes the browser save it without opening it in a new tab.
+        updateOverallStatus('⬇ Downloading zip…', 0, 1);
+        window.location.href = zipUrl;
+        return;
+      }
+
       try {
         // Fetch the zip as a binary blob
         const resp = await fetch(zipUrl);
