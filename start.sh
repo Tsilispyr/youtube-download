@@ -1,6 +1,5 @@
 #!/bin/sh
 # start.sh — starts the bgutil PO token server then the Flask app.
-# Works inside Docker and on bare Linux/macOS for local dev.
 set -e
 
 GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'
@@ -8,49 +7,15 @@ info()  { printf "${GREEN}[start]${NC} %s\n" "$*"; }
 warn()  { printf "${YELLOW}[start]${NC} %s\n" "$*"; }
 error() { printf "${RED}[start]${NC} %s\n" "$*"; exit 1; }
 
-# ── Locate bgutil server build ────────────────────────────────────────────────
-# Inside Docker: /bgutil-server-src/server/build/main.js  (built in Dockerfile)
-# Local dev:     ~/bgutil-ytdlp-pot-provider/server/build/main.js (cloned manually)
-BGUTIL_MAIN=""
-for candidate in \
-    "/bgutil-server-src/server/build/main.js" \
-    "$HOME/bgutil-ytdlp-pot-provider/server/build/main.js" \
-    "./bgutil-ytdlp-pot-provider/server/build/main.js"
-do
-    if [ -f "$candidate" ]; then
-        BGUTIL_MAIN="$candidate"
-        break
-    fi
-done
-
-# ── Install bgutil locally if not found ──────────────────────────────────────
-if [ -z "$BGUTIL_MAIN" ]; then
-    warn "bgutil server not found — cloning and building now (one-time setup)..."
-
-    # Determine latest tag or fall back to 1.3.1
-    BGUTIL_VERSION="${BGUTIL_VERSION:-1.3.1}"
-
-    if ! command -v node >/dev/null 2>&1; then
-        error "Node.js is required but not installed. Install from https://nodejs.org"
-    fi
-    if ! command -v git >/dev/null 2>&1; then
-        error "git is required but not installed."
-    fi
-
-    git clone --depth 1 --single-branch --branch "$BGUTIL_VERSION" \
-        https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git \
-        "$HOME/bgutil-ytdlp-pot-provider"
-
-    cd "$HOME/bgutil-ytdlp-pot-provider/server"
-    npm ci
-    npx tsc
-    cd -
-
-    BGUTIL_MAIN="$HOME/bgutil-ytdlp-pot-provider/server/build/main.js"
-    info "bgutil server built at $BGUTIL_MAIN ✓"
-else
-    info "bgutil server found at $BGUTIL_MAIN ✓"
+# ── Locate bgutil-pot binary ──────────────────────────────────────────────────
+# Docker: installed to /usr/local/bin/bgutil-pot by Dockerfile
+# Local dev without Docker: install manually —
+#   curl -fsSL https://github.com/jim60105/bgutil-ytdlp-pot-provider-rs/releases/latest/download/bgutil-pot-linux-x86_64 \
+#     -o /usr/local/bin/bgutil-pot && chmod +x /usr/local/bin/bgutil-pot
+if ! command -v bgutil-pot >/dev/null 2>&1; then
+    error "bgutil-pot not found. See Dockerfile comment for install instructions."
 fi
+info "bgutil-pot found at $(command -v bgutil-pot) ✓"
 
 # ── Check Python packages ─────────────────────────────────────────────────────
 if ! python -c "import flask, yt_dlp" >/dev/null 2>&1; then
@@ -68,9 +33,9 @@ else
     info "ffmpeg ✓"
 fi
 
-# ── Start bgutil token server ─────────────────────────────────────────────────
-info "Starting bgutil PO token server..."
-node "$BGUTIL_MAIN" &
+# ── Start bgutil PO token server ──────────────────────────────────────────────
+info "Starting bgutil-pot PO token server on port 4416..."
+bgutil-pot server &
 POT_PID=$!
 
 # ── Wait until port 4416 accepts connections (max 30 s) ──────────────────────
