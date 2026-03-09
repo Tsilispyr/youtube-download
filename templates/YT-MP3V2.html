@@ -740,7 +740,6 @@
 
       clearError();
       hide('infoCard');
-      hide('filesSection');
 
       el('fetchBtn').disabled = true;
       show('fetchingIndicator');
@@ -1114,29 +1113,6 @@
         el('opBar').style.width = (done / total * 100) + '%';
         el('opCount').textContent = done + ' / ' + total;
       }
-    }
-
-    // ── Load downloaded files ─────────────────────
-    async function loadFiles() {
-      try {
-        const res = await fetch('/api/files');
-        const files = await res.json();
-        if (!files.length) return;
-
-        const list = el('fileList');
-        list.innerHTML = '';
-        files.slice().reverse().forEach(f => {
-          const item = document.createElement('div');
-          item.className = 'file-item';
-          item.innerHTML = `
-        <span class="file-icon">🎵</span>
-        <span class="file-name" title="${escHtml(f.name)}">${escHtml(f.name)}</span>
-        <span class="file-size">${fmtBytes(f.size)}</span>
-      `;
-          list.appendChild(item);
-        });
-        showB('filesSection');
-      } catch (_) { }
     }
 
     // ── Clear ─────────────────────────────────────
