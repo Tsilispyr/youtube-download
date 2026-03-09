@@ -67,8 +67,6 @@ Then open `http://localhost:5000`
 - To update yt-dlp inside Docker: `docker compose build --no-cache`
 
 
-- On app.py, # DOWNLOAD_DIR = os.environ.get("DOWNLOAD_DIR", "/sdcard/Download")    #uncomment to download on android
-/sdcard/ is misleading — it's not the SD card. On Android, /sdcard/ is a symlink that points to the phone's internal storage.
-
+- On app.py, # DOWNLOAD_DIR = os.environ.get("DOWNLOAD_DIR", "/sdcard/Download") #uncomment to download on android /sdcard/ is misleading — it's not the SD card. On Android, /sdcard/ is a symlink that points to the phone's internal storage.
 
 Future changes include playlists downloads in folders for each playlist and addition for photos to albums, playlists and standalone songs.

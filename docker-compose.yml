@@ -6,6 +6,8 @@ services:
     volumes:
       # Your MP3s will land here on your machine
       - ./downloads:/downloads
+      # Mount the current directory into /app so changes auto-reload
+      - ./:/app
     environment:
       - DOWNLOAD_DIR=/downloads
     restart: unless-stopped
