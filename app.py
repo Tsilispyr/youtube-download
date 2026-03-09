@@ -14,7 +14,7 @@ import yt_dlp
 import yt_dlp.utils
 
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder="static")
 
 
 # ──────────────────────────────────────────────
@@ -42,9 +42,10 @@ def base_ydl_opts() -> dict:
         "quiet": True,
         "no_warnings": True,
         "ignoreerrors": True,
+        "cookies": False,
         "extractor_args": {
             "youtube": {
-                "player_client": ["web"],
+                "player_client": ["web", "android"],
             }
         },
     }
@@ -100,6 +101,12 @@ def cleanup_session(session_id: str):
 # ──────────────────────────────────────────────
 # Routes
 # ──────────────────────────────────────────────
+
+@app.route("/favicon.ico")
+def favicon():
+    # Avoid noisy 404s in the browser devtools.
+    return app.send_static_file("favicon.ico")
+
 
 @app.route("/")
 def index():
@@ -196,6 +203,11 @@ def get_info():
     except yt_dlp.utils.DownloadError as e:
         return jsonify({"error": str(e)}), 400
     except Exception as e:
+        # Environment/config issues like cookiefile configured but missing should be a 400,
+        # not a 500 (it's not a server crash, it's a request that can't be fulfilled here).
+        msg = str(e)
+        if "failed to load cookies" in msg.lower():
+            return jsonify({"error": msg}), 400
         return jsonify({"error": f"Unexpected error: {e}"}), 500
 
 
