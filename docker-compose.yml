@@ -4,10 +4,7 @@ services:
     ports:
       - "5000:5000"
     volumes:
-      # Your MP3s will land here on your machine
-      - ./downloads:/downloads
-      # Mount the current directory into /app so changes auto-reload
       - ./:/app
-    environment:
-      - DOWNLOAD_DIR=/downloads
+    # BGU_POT_SERVER_HOST is already set to localhost:4416 in the Dockerfile.
+    # start.sh launches the token server and Flask together in one container.
     restart: unless-stopped

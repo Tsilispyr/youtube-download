@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: yt-mp3
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: FLASK_ENV
+        value: production
+      - key: BGU_POT_SERVER_HOST
+        value: localhost:4416
+    healthCheckPath: /
+    autoDeploy: true

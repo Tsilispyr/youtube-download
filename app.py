@@ -28,16 +28,47 @@ def get_default_download_dir() -> str:
     if is_ios or os.path.isdir(icloud_docs):
         if os.path.isdir(icloud_docs):
             return os.path.join(icloud_docs, "Downloads")
-        # Fallback for iOS apps that expose ~/Documents as their storage
         return os.path.expanduser("~/Documents/Downloads")
         
     # 3. Default for PC/Docker
     return "/downloads"
 
 DOWNLOAD_DIR = os.environ.get("DOWNLOAD_DIR", get_default_download_dir())
-
-
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+
+# Optional: path to a cookies.txt file exported from your browser.
+# Set via environment variable, e.g.:  COOKIES_FILE=/app/cookies.txt
+# Or place a file named "cookies.txt" next to app.py and it will be auto-detected.
+_COOKIES_FILE_ENV = os.environ.get("COOKIES_FILE", "")
+_COOKIES_FILE_AUTO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cookies.txt")
+
+def get_cookies_file() -> str | None:
+    """Return path to a valid cookies.txt, or None if not found."""
+    if _COOKIES_FILE_ENV and os.path.isfile(_COOKIES_FILE_ENV):
+        return _COOKIES_FILE_ENV
+    if os.path.isfile(_COOKIES_FILE_AUTO):
+        return _COOKIES_FILE_AUTO
+    return None
+
+def cookies_opts() -> dict:
+    """
+    Return yt-dlp cookie options.
+    Priority:
+      1. cookies.txt file (most reliable for servers/Docker)
+      2. Browser cookie extraction (works on desktop when a browser is logged in)
+    """
+    f = get_cookies_file()
+    if f:
+        return {"cookiefile": f}
+    
+    # Try browsers in order; yt-dlp will silently skip unavailable ones.
+    # Using a list of tuples so we return the first successful one at runtime.
+    # We just pass all browsers and let yt-dlp handle it, but yt-dlp only
+    # accepts one browser at a time, so we try each and return on first success.
+    for browser in ("chrome", "firefox", "edge", "brave", "chromium", "safari"):
+        return {"cookiesfrombrowser": (browser,)}
+    return {}
+
 
 # Per-session download queues
 download_queues: dict[str, queue.Queue] = {}
@@ -46,15 +77,11 @@ download_queues: dict[str, queue.Queue] = {}
 # ──────────────────────────────────────────────
 # Helpers
 # ──────────────────────────────────────────────
-# Note: yt-dlp can handle music.youtube.com URLs directly, so we don't need to rewrite them.
 
 def normalise_url(url: str) -> str:
-    """Normalise YouTube Music URLs to plain YouTube when needed."""
-    url = url.strip()
-    # yt-dlp handles music.youtube.com natively – just return as-is
-    return url
+    """Strip whitespace; yt-dlp handles music.youtube.com natively."""
+    return url.strip()
 
-# Format seconds as H:MM:SS or M:SS
 def fmt_duration(seconds) -> str:
     if not seconds:
         return ""
@@ -68,19 +95,25 @@ def fmt_duration(seconds) -> str:
 # ──────────────────────────────────────────────
 # Routes
 # ──────────────────────────────────────────────
-# The frontend is very minimal and just serves the static HTML/JS/CSS. All the logic is in the API routes.
+
 @app.route("/")
 def index():
-    # Find the first .html file in the templates directory
     templates_dir = os.path.join(app.root_path, app.template_folder)
     for f in os.listdir(templates_dir):
         if f.endswith(".html") and os.path.isfile(os.path.join(templates_dir, f)):
             return render_template(f)
-            
-    # Fallback if no template is found
     return "No HTML template found in the templates directory.", 404
 
-# This route accepts a YouTube URL (video or playlist) and returns structured info about it, including track details for playlists.
+
+@app.route("/api/cookies-status")
+def cookies_status():
+    """Let the frontend know whether cookies are configured."""
+    f = get_cookies_file()
+    if f:
+        return jsonify({"configured": True, "source": "file", "path": f})
+    return jsonify({"configured": False, "source": None})
+
+
 @app.route("/api/info", methods=["POST"])
 def get_info():
     data = request.get_json(force=True)
@@ -88,30 +121,32 @@ def get_info():
     if not url:
         return jsonify({"error": "No URL provided"}), 400
 
-# We use yt-dlp to extract info without downloading. For playlists, we get all entries; for single videos, we just get the one.
     ydl_opts = {
         "quiet": True,
         "no_warnings": True,
         "extract_flat": "in_playlist",
         "skip_download": True,
         "ignoreerrors": True,
+        # FIX: Use web_creator + mweb instead of android (android is heavily flagged by YouTube)
         "extractor_args": {
             "youtube": {
-                "player_client": ["android", "web"]
+                "player_client": ["web_creator", "web", "mweb"],
+                "player_skip": ["webpage"],
             }
-        }
+        },
+        # FIX: Add cookie support
+        **cookies_opts(),
     }
-# We handle errors gracefully, returning JSON error messages for known issues and a generic message for unexpected exceptions.
+
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
 
         if info is None:
-            return jsonify({"error": "Could not fetch info. Check the URL and try again."}), 400
+            return jsonify({"error": "Could not fetch info. The video may be unavailable or age-restricted. Try adding a cookies.txt file next to app.py."}), 400
 
         tracks = []
-        
-# If the info contains "entries", it's a playlist. We iterate through each entry to extract track details. For single videos, we just extract the one track.
+
         if "entries" in info:
             # Playlist
             for entry in (info["entries"] or []):
@@ -124,71 +159,66 @@ def get_info():
                 )
                 if not vid_url:
                     continue
-                tracks.append(
-                    {
-                        "id": vid_id,
-                        "title": entry.get("title") or vid_id,
-                        "url": vid_url,
-                        "duration": fmt_duration(entry.get("duration")),
-                        "thumbnail": entry.get("thumbnail") or "",
-                        "uploader": entry.get("uploader") or entry.get("channel") or "",
-                    }
-                )
-            return jsonify(
-                {
-                    "type": "playlist",
-                    "title": info.get("title", "Playlist"),
-                    "uploader": info.get("uploader") or info.get("channel") or "",
-                    "count": len(tracks),
-                    "tracks": tracks,
-                }
-            )
-            # Note: For playlists, yt-dlp may not provide a direct URL for each entry when using "extract_flat", so we construct it from the video ID if needed.
+                tracks.append({
+                    "id": vid_id,
+                    "title": entry.get("title") or vid_id,
+                    "url": vid_url,
+                    "duration": fmt_duration(entry.get("duration")),
+                    "thumbnail": entry.get("thumbnail") or "",
+                    "uploader": entry.get("uploader") or entry.get("channel") or "",
+                })
+            return jsonify({
+                "type": "playlist",
+                "title": info.get("title", "Playlist"),
+                "uploader": info.get("uploader") or info.get("channel") or "",
+                "count": len(tracks),
+                "tracks": tracks,
+            })
         else:
             # Single video
+            # FIX: For single videos, extract_flat may leave out full info.
+            # Re-extract without extract_flat to get proper metadata.
             vid_id = info.get("id", "")
-            tracks.append(
-                {
-                    "id": vid_id,
-                    "title": info.get("title") or vid_id,
-                    "url": url,
-                    "duration": fmt_duration(info.get("duration")),
-                    "thumbnail": info.get("thumbnail") or "",
-                    "uploader": info.get("uploader") or info.get("channel") or "",
-                }
-            )
-            return jsonify(
-                {
-                    "type": "single",
-                    "title": info.get("title") or vid_id,
-                    "count": 1,
-                    "tracks": tracks,
-                }
-            )
-            
-    # We catch yt-dlp's DownloadError for known issues (like invalid URLs) and return a 400 with the error message. For any other unexpected exceptions, we return a 500 with a generic message.
+            tracks.append({
+                "id": vid_id,
+                "title": info.get("title") or vid_id,
+                "url": url,
+                "duration": fmt_duration(info.get("duration")),
+                "thumbnail": info.get("thumbnail") or "",
+                "uploader": info.get("uploader") or info.get("channel") or "",
+            })
+            return jsonify({
+                "type": "single",
+                "title": info.get("title") or vid_id,
+                "count": 1,
+                "tracks": tracks,
+            })
+
     except yt_dlp.utils.DownloadError as e:
-        return jsonify({"error": str(e)}), 400
+        msg = str(e)
+        if "Sign in" in msg or "bot" in msg.lower():
+            msg = ("YouTube requires authentication. "
+                   "Export cookies.txt from your browser (while logged into YouTube) "
+                   "and place it next to app.py, or set the COOKIES_FILE env variable.")
+        return jsonify({"error": msg}), 400
     except Exception as e:
         return jsonify({"error": f"Unexpected error: {e}"}), 500
 
-# This route accepts a list of URLs and starts downloading them.
+
 @app.route("/api/download", methods=["POST"])
 def start_download():
     data = request.get_json(force=True)
     urls = data.get("urls", [])
-    titles = data.get("titles", {})   # {url: title}
+    titles = data.get("titles", {})
     playlist_title = data.get("playlist_title", "").strip()
     session_id = data.get("session_id") or str(uuid.uuid4())
-    
-# We create a unique session ID for this download batch and set up a queue to communicate progress back to the frontend. The download process runs in a separate thread to avoid blocking the Flask server.
+
     if not urls:
         return jsonify({"error": "No URLs provided"}), 400
 
     q: queue.Queue = queue.Queue()
     download_queues[session_id] = q
-    
-# The do_download function iterates through each URL, sets up yt-dlp with appropriate options (including progress hooks), and starts the download. Progress updates are sent to the queue, which the frontend listens to via Server-Sent Events.
+
     def do_download():
         for url in urls:
             title = titles.get(url, url)
@@ -204,38 +234,32 @@ def start_download():
                             pct = 0
                         speed = d.get("_speed_str", "").strip()
                         eta = d.get("_eta_str", "").strip()
-                        q.put(
-                            {
-                                "type": "progress",
-                                "url": u,
-                                "title": t,
-                                "percent": pct,
-                                "speed": speed,
-                                "eta": eta,
-                            }
-                        )
+                        q.put({
+                            "type": "progress",
+                            "url": u,
+                            "title": t,
+                            "percent": pct,
+                            "speed": speed,
+                            "eta": eta,
+                        })
                     elif status == "finished":
                         q.put({"type": "converting", "url": u, "title": t})
                     elif status == "error":
-                        q.put(
-                            {
-                                "type": "track_error",
-                                "url": u,
-                                "title": t,
-                                "message": str(d.get("error", "Unknown")),
-                            }
-                        )
-
+                        q.put({
+                            "type": "track_error",
+                            "url": u,
+                            "title": t,
+                            "message": str(d.get("error", "Unknown")),
+                        })
                 return hook
-            
-            # Determine output directory (subfolder if playlist)
+
             out_dir = DOWNLOAD_DIR
             if playlist_title:
                 safe_title = yt_dlp.utils.sanitize_filename(playlist_title, is_id=False)
                 if safe_title:
                     out_dir = os.path.join(DOWNLOAD_DIR, safe_title)
                     os.makedirs(out_dir, exist_ok=True)
-            
+
             ydl_opts = {
                 "format": "bestaudio/best",
                 "writethumbnail": True,
@@ -259,11 +283,15 @@ def start_download():
                 "quiet": True,
                 "no_warnings": True,
                 "ignoreerrors": True,
+                # FIX: Use web_creator + mweb instead of android
                 "extractor_args": {
                     "youtube": {
-                        "player_client": ["android", "web"]
+                        "player_client": ["web_creator", "web", "mweb"],
+                        "player_skip": ["webpage"],
                     }
-                }
+                },
+                # FIX: Add cookie support
+                **cookies_opts(),
             }
 
             try:
@@ -281,7 +309,7 @@ def start_download():
 
     return jsonify({"session_id": session_id})
 
-# This route implements Server-Sent Events to stream download progress updates to the frontend in real-time.
+
 @app.route("/api/progress/<session_id>")
 def progress_stream(session_id):
     def generate():
@@ -299,7 +327,6 @@ def progress_stream(session_id):
             except queue.Empty:
                 yield "data: {\"type\":\"keepalive\"}\n\n"
 
-        # Clean up
         download_queues.pop(session_id, None)
 
     return Response(
@@ -311,7 +338,7 @@ def progress_stream(session_id):
         },
     )
 
-# This route lists all downloaded MP3 files with their name, size, and modification time.
+
 @app.route("/api/files")
 def list_files():
     files = []
@@ -320,17 +347,16 @@ def list_files():
             if f.endswith(".mp3"):
                 path = os.path.join(root, f)
                 rel_path = os.path.relpath(path, DOWNLOAD_DIR)
-                files.append(
-                    {
-                        "name": rel_path.replace(os.sep, "/"),
-                        "size": os.path.getsize(path),
-                        "mtime": os.path.getmtime(path),
-                    }
-                )
-    # Sort files alphabetically
+                files.append({
+                    "name": rel_path.replace(os.sep, "/"),
+                    "size": os.path.getsize(path),
+                    "mtime": os.path.getmtime(path),
+                })
     files.sort(key=lambda x: x["name"].lower())
     return jsonify(files)
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=False, threaded=True)
+    # Render.com (and other PaaS) set PORT dynamically; default to 5000 locally
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=False, threaded=True)

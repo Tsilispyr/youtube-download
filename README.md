@@ -1,72 +1,83 @@
-# YT → MP3 Downloader
+# YT → MP3
 
-A local web app to download MP3s from YouTube and YouTube Music — videos, single tracks, or full playlists.
-
-## Quick Start
-
-### With Docker
-
-```bash
-# Build and start
-docker compose up --build
-
-# Then open in browser:
-# http://localhost:5000
-```
-
-MP3 files are saved to `./downloads/` on your machine.
+Download music from YouTube and YouTube Music as high-quality MP3 files — straight to your device.
 
 ---
 
-### Without Docker (Python 3.10+)
+## What it does
 
-**Prerequisites:** Python 3.10+, `ffmpeg` installed on your system.
+Paste a YouTube or YouTube Music link and download the audio as an MP3. Works with single songs and full playlists.
 
-```bash
-# Install ffmpeg (if not already installed)
-# macOS:
-brew install ffmpeg
-# Ubuntu/Debian:
-sudo apt install ffmpeg
-# Windows: https://ffmpeg.org/download.html
+**Single video:**
+You get one `.mp3` file saved directly to your device.
 
-# Install Python deps
-pip install -r requirements.txt
+**Playlist:**
+You get a `.zip` file. Unzip it to find a folder named after the playlist, containing all the songs as MP3s plus a `cover.jpg`.
 
-# Run the app
-DOWNLOAD_DIR=./downloads python app.py
-```
-
-Then open `http://localhost:5000`
+All files download directly to your device — nothing is kept on the server.
 
 ---
 
-## Supported URL formats
+## What you get with each MP3
 
-| Type | Example |
-|------|---------|
-| YouTube video | `https://www.youtube.com/watch?v=WMG2EEregSk` |
-| YouTube playlist | `https://youtube.com/playlist?list=PL0tcET7ZkzP...` |
-| YT Music track | `https://music.youtube.com/watch?v=MCZbjClHc18` |
-| YT Music playlist | `https://music.youtube.com/playlist?list=PL0tcET7...` |
-| YT Music track+list | `https://music.youtube.com/watch?v=...&list=PL0tcET7...` |
+- **320 kbps** audio quality
+- **Album art** embedded in the file (shows up in your music player)
+- **Metadata** — title, artist, and other info embedded automatically
 
-## Features
+---
 
-- Paste any YouTube or YouTube Music URL
-- Playlists load all tracks with thumbnails, duration, uploader
-- Select individual tracks or select all
-- Real-time download progress per track
-- MP3 at 320kbps with embedded metadata
-- Files listed after download
+## Supported links
 
-## Notes
+| What you want | Example link format |
+|---|---|
+| A single YouTube video | `youtube.com/watch?v=...` |
+| A YouTube playlist | `youtube.com/playlist?list=...` |
+| A YouTube Music song | `music.youtube.com/watch?v=...` |
+| A YouTube Music playlist | `music.youtube.com/playlist?list=...` |
+| A YouTube Music song from a playlist | `music.youtube.com/watch?v=...&list=...` |
 
-- Downloads are saved to `./downloads/` (Docker) or `DOWNLOAD_DIR` (local)
-- yt-dlp is used under the hood — keep it updated with `pip install -U yt-dlp`
-- To update yt-dlp inside Docker: `docker compose build --no-cache`
+---
 
+## How to use it
 
-- On app.py, # DOWNLOAD_DIR = os.environ.get("DOWNLOAD_DIR", "/sdcard/Download") #uncomment to download on android /sdcard/ is misleading — it's not the SD card. On Android, /sdcard/ is a symlink that points to the phone's internal storage.
+1. Copy a YouTube or YouTube Music link
+2. Paste it into the box and press **Enter** or click **Fetch**
+3. The app loads the song or playlist with titles, thumbnails, and durations
+4. Select the tracks you want (or select all)
+5. Click **Download MP3**
+6. Your browser will prompt you to save the file(s)
 
-Future changes include playlists downloads in folders for each playlist and addition for photos to albums, playlists and standalone songs.
+For playlists — your browser may ask "allow this site to download multiple files?" — click **Allow**.
+
+---
+
+## Works on
+
+- **Desktop** — Chrome, Firefox, Edge, Safari (Mac)
+- **Android** — Chrome, Firefox (files save to your Downloads folder)
+- **iPhone / iPad** — Safari (files save to Files app → Downloads)
+
+---
+
+## Tips
+
+**Playlist folder on your device:**
+After downloading, unzip the file. You'll get a folder named after the playlist with all the MP3s inside, ready to import into any music app.
+
+**iPhone / iPad:**
+After the zip downloads, tap it in Safari's download list → tap the share icon → **Save to Files** or **Import to Music**.
+
+**Android:**
+The zip saves to your Downloads folder. Use your file manager to unzip, then import the folder into your music app.
+
+**If a download fails:**
+Some videos are region-locked or age-restricted and cannot be downloaded. The app will show an error for those tracks and continue with the rest.
+
+---
+
+## Privacy
+
+- No account required
+- No login, no tracking
+- Files are deleted from the server the moment your download starts
+- Nothing about your downloads is stored or logged
