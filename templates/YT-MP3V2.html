@@ -1018,8 +1018,8 @@
         if (msg.type === 'all_done') {
           sse.close();
           el('dlBtn').disabled = false;
-          const doneMsg = (useFallbackZip && currentType === 'playlist')
-            ? 'All done ✓ — unzip the file to find your MP3s'
+          const doneMsg = (currentType === 'playlist' && !isMobile)
+            ? 'All done ✓ — unzip the file to find your playlist folder'
             : 'All done ✓ — check your Downloads folder';
           updateOverallStatus(doneMsg, totalCount, totalCount);
         }
@@ -1038,14 +1038,14 @@
     }
 
     // ── Platform detection ────────────────────────
-    // iOS Safari and desktop Safari don't support <a download> on blob URLs —
-    // files open inline in the browser instead of saving.
-    // For those platforms we fall back to serving the zip directly so the
-    // browser's own download mechanism handles it.
-    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+    // Mobile phones (iOS + Android): auto-unpack the zip so files land directly
+    // in the Downloads folder / Files app — no manual unzip step needed.
+    // Desktop (PC / Mac): receive the zip as-is so the full folder structure
+    // (PlaylistName/song.mp3 + cover.jpg) is preserved on disk.
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
                   (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-    const useFallbackZip = isSafari || isIOS;
+    const isAndroid = /Android/i.test(navigator.userAgent);
+    const isMobile = isIOS || isAndroid;
 
     // ── Single file download ───────────────────────
     function triggerDownload(url, filename) {
@@ -1057,36 +1057,32 @@
       document.body.removeChild(a);
     }
 
-    // ── Playlist: fetch zip → unpack in browser → save each file ──────────────
-    // On Safari/iOS blob URLs don't trigger Save dialogs, so we serve the zip
-    // directly instead — the browser's native download handles it.
-    // On other browsers, files are saved one at a time with a short delay so
-    // the browser doesn't block rapid-fire download attempts.
+    // ── Playlist download ──────────────────────────
+    // Mobile  → JSZip: unpack in-browser, trigger one Save per file (auto-done).
+    // Desktop → serve zip directly: full folder + cover lands as one file.
     async function unpackAndDownload(zipUrl, zipFilename, onProgress) {
-      if (useFallbackZip) {
-        // Safari / iOS: navigate directly to the zip — Content-Disposition: attachment
-        // makes the browser save it without opening it in a new tab.
+      if (!isMobile) {
+        // Desktop: navigate directly to the zip.
+        // Flask sends Content-Disposition: attachment so it saves, not opens.
+        // The zip contains PlaylistName/song.mp3 … + PlaylistName/cover.jpg
         updateOverallStatus('⬇ Downloading zip…', 0, 1);
         window.location.href = zipUrl;
         return;
       }
 
+      // Mobile: fetch zip, unpack in memory, save each file individually.
       try {
-        // Fetch the zip as a binary blob
         const resp = await fetch(zipUrl);
         if (!resp.ok) throw new Error(`Server error ${resp.status}`);
         const blob = await resp.blob();
 
-        // Load into JSZip
         const zip = await JSZip.loadAsync(blob);
 
-        // Collect all files, MP3s first then cover image
+        // Collect files — MP3s first, cover last
         const entries = [];
         zip.forEach((relativePath, file) => {
           if (!file.dir) entries.push({ relativePath, file });
         });
-
-        // Sort: MP3s alphabetically, then cover image last
         entries.sort((a, b) => {
           const aIsMp3 = a.relativePath.endsWith('.mp3');
           const bIsMp3 = b.relativePath.endsWith('.mp3');
@@ -1098,18 +1094,14 @@
         const total = entries.length;
         for (let i = 0; i < entries.length; i++) {
           const { relativePath, file } = entries[i];
-          // Use just the filename (no folder prefix in the save name)
-          const filename = relativePath.split('/').pop();
+          const filename = relativePath.split('/').pop(); // strip folder prefix
           if (onProgress) onProgress(i + 1, total, filename);
 
           const fileBlob = await file.async('blob');
           const objUrl = URL.createObjectURL(fileBlob);
           triggerDownload(objUrl, filename);
-
-          // Revoke after a short delay so browser finishes the request
           setTimeout(() => URL.revokeObjectURL(objUrl), 5000);
 
-          // Stagger saves: give the browser 400ms between each file
           if (i < entries.length - 1) {
             await new Promise(r => setTimeout(r, 400));
           }
