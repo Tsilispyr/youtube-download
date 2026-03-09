@@ -95,6 +95,11 @@ def get_info():
         "extract_flat": "in_playlist",
         "skip_download": True,
         "ignoreerrors": True,
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["android", "web"]
+            }
+        }
     }
 # We handle errors gracefully, returning JSON error messages for known issues and a generic message for unexpected exceptions.
     try:
@@ -254,6 +259,11 @@ def start_download():
                 "quiet": True,
                 "no_warnings": True,
                 "ignoreerrors": True,
+                "extractor_args": {
+                    "youtube": {
+                        "player_client": ["android", "web"]
+                    }
+                }
             }
 
             try:
