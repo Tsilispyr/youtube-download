@@ -12,6 +12,9 @@ import yt_dlp
 app = Flask(__name__)
 
 DOWNLOAD_DIR = os.environ.get("DOWNLOAD_DIR", "/downloads")
+# DOWNLOAD_DIR = os.environ.get("DOWNLOAD_DIR", "/sdcard/Download")    #uncomment to download on android
+#/sdcard/ is misleading — it's not the SD card. On Android, /sdcard/ is a symlink that points to the phone's internal storage.
+
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 # Per-session download queues
