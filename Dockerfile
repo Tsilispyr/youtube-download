@@ -56,6 +56,9 @@ RUN git clone --depth 1 --single-branch --branch ${BGUTIL_VERSION} \
         https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git \
         /bgutil-server-src \
     && cd /bgutil-server-src/server \
+    # Patch Chromium launch args so it runs as root inside Docker/Render.
+    # Without --no-sandbox, Chromium refuses to start when running as root.
+    && sed -i "s/args: \[/args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', /g" src/main.ts \
     && npm ci \
     && npx tsc \
     && echo "bgutil server built OK"
@@ -76,7 +79,5 @@ EXPOSE 5000
 ENV FLASK_ENV=production
 # bgutil plugin reads this to find the HTTP token server
 ENV BGU_POT_SERVER_HOST=localhost:4416
-# Required for headless Chromium inside Docker (no user namespace sandbox available)
-ENV PUPPETEER_ARGS="--no-sandbox --disable-setuid-sandbox"
 
 CMD ["./start.sh"]
