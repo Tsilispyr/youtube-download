@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ffmpeg \
         curl \
         netcat-openbsd \
+        dos2unix \
     && rm -rf /var/lib/apt/lists/*
 
 # ── 2. bgutil PO token server (Rust binary — no Chromium required) ────────────
@@ -29,7 +30,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app.py .
 COPY templates/ templates/
 COPY start.sh .
-RUN chmod +x start.sh
+# Fix Windows CRLF line endings automatically — safe no-op on Linux/Mac
+RUN dos2unix start.sh && chmod +x start.sh
 
 EXPOSE 5000
 
