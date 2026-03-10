@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+{% block title %}Player — AudioWorld{% endblock %}
+{% block head %}
+<script src="https://unpkg.com/butterchurn@2.6.7/lib/butterchurn.min.js"></script>
+<script src="https://unpkg.com/butterchurn-presets@2.4.7/lib/butterchurnPresets.min.js"></script>
+<style>
+  .player-wrap { display: grid; grid-template-columns: 1fr 320px; gap: 1.5rem; max-width: 1200px; margin: 2rem auto; padding: 1rem; }
+  @media (max-width: 768px) { .player-wrap { grid-template-columns: 1fr; } }
+  .viz-area { background: #000; border-radius: 8px; min-height: 300px; position: relative; overflow: hidden; }
+  .viz-area canvas { width: 100%; height: 100%; display: block; }
+  .library-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; max-height: 70vh; overflow-y: auto; }
+  .search-input { width: 100%; padding: 0.6rem; margin-bottom: 1rem; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 4px; font-family: var(--mono); }
+  .folder { margin-bottom: 1rem; }
+  .folder-name { font-family: var(--mono); font-size: 0.8rem; color: var(--accent); margin-bottom: 0.5rem; cursor: pointer; }
+  .song-item { padding: 0.5rem 0.75rem; background: var(--surface2); border-radius: 4px; margin-bottom: 0.3rem; cursor: pointer; font-size: 0.85rem; }
+  .song-item:hover { border-left: 3px solid var(--accent); }
+  .song-item.playing { border-left: 3px solid var(--accent2); background: rgba(71,184,255,0.1); }
+  .controls { display: flex; gap: 1rem; padding: 1rem; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; margin-top: 1rem; flex-wrap: wrap; align-items: center; }
+  .eq-mini { display: flex; gap: 0.2rem; align-items: flex-end; height: 40px; }
+  .eq-mini input { width: 6px; height: 100%; -webkit-appearance: slider-vertical; }
+  .login-prompt { padding: 3rem; text-align: center; color: var(--muted); }
+  .login-prompt a { color: var(--accent); }
+  .timeline-wrap { flex: 1; min-width: 150px; display: flex; align-items: center; gap: 0.5rem; }
+  .timeline-wrap input[type="range"] { flex: 1; accent-color: var(--accent); }
+  .time-display { font-family: var(--mono); font-size: 0.7rem; color: var(--muted); }
+</style>
+{% endblock %}
+{% block content %}
+<div class="player-wrap">
+  <div>
+    <div class="viz-area">
+      <canvas id="vizCanvas" width="800" height="300"></canvas>
+    </div>
+    <div class="controls">
+      <button id="playBtn" style="padding:0.5rem 1rem;background:var(--accent);color:#0c0c0e;border:none;border-radius:4px;cursor:pointer;font-family:var(--mono);">▶ Play</button>
+      <span id="nowPlaying" style="font-size:0.85rem;color:var(--muted);flex:1;min-width:120px;">—</span>
+      <div class="timeline-wrap">
+        <span class="time-display" id="timeDisplay">0:00/0:00</span>
+        <input type="range" id="seekBar" min="0" max="100" value="0" />
+      </div>
+      <button id="nextPresetBtn" style="padding:0.4rem 0.8rem;font-size:0.75rem;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:4px;cursor:pointer;">Next viz</button>
+    </div>
+  </div>
+  <div class="library-panel">
+    {% if current_user.is_authenticated %}
+    <input type="text" class="search-input" id="searchInput" placeholder="Search library…" />
+    <div id="libraryContent">Loading…</div>
+    {% else %}
+    <div class="login-prompt">
+      <p>Log in to see your library and play songs.</p>
+      <a href="/AudioWeb/login">Login</a> · <a href="/AudioWeb/register">Register</a>
+    </div>
+    {% endif %}
+  </div>
+</div>
+<audio id="audioEl"></audio>
+<script>
+(function(){
+  const API_BASE = '/AudioWorld/Player';
+  const canvas = document.getElementById('vizCanvas');
+  const audioEl = document.getElementById('audioEl');
+  let audioCtx = null;
+  let visualizer = null;
+  let sourceNode = null;
+  let presetKeys = [];
+  let presets = {};
+  let presetIdx = 0;
+
+  function initAudio() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (!sourceNode) {
+      sourceNode = audioCtx.createMediaElementSource(audioEl);
+      const gain = audioCtx.createGain();
+      gain.gain.value = 1;
+      sourceNode.connect(gain);
+      gain.connect(audioCtx.destination);
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 256;
+      gain.connect(analyser);
+      if (typeof butterchurn !== 'undefined') {
+        try {
+          visualizer = butterchurn.createVisualizer(audioCtx, canvas, {
+            width: canvas.clientWidth,
+            height: canvas.clientHeight,
+            pixelRatio: window.devicePixelRatio || 1,
+          });
+          if (typeof butterchurnPresets !== 'undefined') {
+            presets = butterchurnPresets.getPresets();
+            presetKeys = Object.keys(presets);
+            if (presetKeys.length) visualizer.loadPreset(presets[presetKeys[0]], 0);
+          }
+          visualizer.connectAudio(analyser);
+          function render() { visualizer && visualizer.render(); requestAnimationFrame(render); }
+          requestAnimationFrame(render);
+        } catch (e) { console.warn('Viz init failed:', e); }
+      }
+    }
+  }
+
+  document.getElementById('nextPresetBtn').addEventListener('click', () => {
+    if (visualizer && presetKeys.length) {
+      presetIdx = (presetIdx + 1) % presetKeys.length;
+      visualizer.loadPreset(presets[presetKeys[presetIdx]], 2);
+    }
+  });
+
+  const seekBar = document.getElementById('seekBar');
+  seekBar.addEventListener('input', () => {
+    if (audioEl.duration) audioEl.currentTime = (seekBar.value / 100) * audioEl.duration;
+  });
+  audioEl.addEventListener('timeupdate', () => {
+    if (audioEl.duration) seekBar.value = (audioEl.currentTime / audioEl.duration) * 100;
+    document.getElementById('timeDisplay').textContent = fmtTime(audioEl.currentTime) + '/' + fmtTime(audioEl.duration);
+  });
+  audioEl.addEventListener('loadedmetadata', () => {
+    seekBar.value = 0;
+    document.getElementById('timeDisplay').textContent = '0:00/' + fmtTime(audioEl.duration);
+  });
+  function fmtTime(s) {
+    if (!s || isNaN(s)) return '0:00';
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return m + ':' + (sec < 10 ? '0' : '') + sec;
+  }
+
+  {% if current_user.is_authenticated %}
+  let folders = {};
+  async function loadLibrary() {
+    const res = await fetch(API_BASE + '/api/library');
+    const data = await res.json();
+    folders = data.folders || {};
+    renderLibrary();
+  }
+
+  function renderLibrary(filter) {
+    const el = document.getElementById('libraryContent');
+    let html = '';
+    for (const [folderName, songs] of Object.entries(folders)) {
+      const filtered = filter ? songs.filter(s =>
+        (s.title || '').toLowerCase().includes(filter) ||
+        (s.artist || '').toLowerCase().includes(filter) ||
+        (s.album || '').toLowerCase().includes(filter)
+      ) : songs;
+      if (filtered.length === 0) continue;
+      html += '<div class="folder"><div class="folder-name">' + escapeHtml(folderName) + '</div>';
+      filtered.forEach(s => {
+        html += '<div class="song-item" data-id="' + s.id + '">' + escapeHtml(s.title) + (s.artist ? ' <span style="color:var(--muted)">· ' + escapeHtml(s.artist) + '</span>' : '') + '</div>';
+      });
+      html += '</div>';
+    }
+    el.innerHTML = html || '<p style="color:var(--muted);font-size:0.9rem;">No songs in library.<br/>1. Go to <a href="/AudioWeb/yt-download/">YT Download</a><br/>2. Paste a YouTube URL and Fetch<br/>3. Check <b>Save to my library</b><br/>4. Click Download MP3</p>';
+    el.querySelectorAll('.song-item').forEach(item => {
+      item.addEventListener('click', () => playSong(parseInt(item.dataset.id)));
+    });
+  }
+
+  function escapeHtml(s) {
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  async function playSong(id) {
+    audioEl.pause();
+    audioEl.removeAttribute('src');
+    audioEl.load();
+    audioEl.src = API_BASE + '/api/stream/' + id + '?t=' + Date.now();
+    audioEl.onerror = () => { document.getElementById('nowPlaying').textContent = 'Error loading'; };
+    audioCtx?.resume?.();
+    initAudio();
+    try {
+      await audioEl.play();
+    } catch (e) { console.warn('Play failed:', e); }
+    document.querySelectorAll('.song-item').forEach(i => i.classList.remove('playing'));
+    const el = document.querySelector('.song-item[data-id="' + id + '"]');
+    if (el) el.classList.add('playing');
+    document.getElementById('nowPlaying').textContent = el ? el.textContent : 'Playing…';
+  }
+
+  document.getElementById('searchInput').addEventListener('input', e => {
+    const q = e.target.value.trim().toLowerCase();
+    renderLibrary(q || null);
+  });
+
+  document.getElementById('playBtn').addEventListener('click', () => {
+    if (!audioEl.src) return;
+    if (audioEl.paused) {
+      audioEl.play();
+      document.getElementById('playBtn').textContent = '❚❚ Pause';
+    } else {
+      audioEl.pause();
+      document.getElementById('playBtn').textContent = '▶ Play';
+    }
+  });
+  audioEl.addEventListener('play', () => { document.getElementById('playBtn').textContent = '❚❚ Pause'; });
+  audioEl.addEventListener('pause', () => { document.getElementById('playBtn').textContent = '▶ Play'; });
+
+  loadLibrary();
+  {% endif %}
+})();
+</script>
+{% endblock %}

@@ -1,3 +1,9 @@
 flask>=3.0
 yt-dlp>=2024.1.1
 bgutil-ytdlp-pot-provider>=0.8.0
+flask-sqlalchemy>=3.1
+flask-login>=0.6
+flask-mail>=0.9
+python-dotenv>=1.0
+minio>=7.2
+psycopg2-binary>=2.9

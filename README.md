@@ -85,9 +85,37 @@ Some videos are region-locked or age-restricted and cannot be downloaded. The ap
 
 
 
-## Small ERROR with Render Deployment and Cookies. 
-It's recommended to deploy locally via docker and have localhost frontend
+## Quick start (Docker)
+
 ```bash
+./setup.sh
+```
+
+Creates `.env` from `.env.example`, then starts all services. Edit `.env` to set:
+- `SECRET_KEY` — random string for session security
+- `MAIL_USERNAME`, `MAIL_PASSWORD` — for email verification (Gmail: use an [App Password](https://support.google.com/accounts/answer/185833))
+- `APP_BASE_URL` — your app URL (e.g. `http://localhost:5000`)
+
+**URLs:**
+- App: http://localhost:5000
+- MinIO UI: http://localhost:9001  
+  - **Username:** `minioadmin`  
+  - **Password:** `minioadmin`
+
+If port 9000 or 9001 is already in use, add to `.env`:
+```
+MINIO_API_PORT=19000
+MINIO_CONSOLE_PORT=19001
+```
+Then use http://localhost:19001 for the MinIO UI.
+
+Data persists in Docker volumes `postgres_data` and `minio_data`.
+
+---
+
+## Manual Docker start
+
+```bash
+cp .env.example .env   # edit .env first
 docker compose up --build
 ```
-Opens on `http://localhost:5000`

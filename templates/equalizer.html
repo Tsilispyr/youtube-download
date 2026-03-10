@@ -1,0 +1,249 @@
+{% extends "base.html" %}
+{% block title %}Equalizer — AudioWeb{% endblock %}
+{% block head %}
+<script src="https://unpkg.com/butterchurn@2.6.7/lib/butterchurn.min.js"></script>
+<script src="https://unpkg.com/butterchurn-presets@2.4.7/lib/butterchurnPresets.min.js"></script>
+<style>
+  .eq-wrap { max-width: 900px; margin: 2rem auto; padding: 1.5rem; }
+  .eq-title { font-family: var(--mono); font-size: 1.2rem; margin-bottom: 1rem; color: var(--accent); }
+  .viz-canvas { width: 100%; max-width: 800px; height: 400px; background: #000; border-radius: 8px; display: block; margin: 1rem 0; }
+  .eq-controls { display: flex; flex-wrap: wrap; gap: 1rem; margin: 1rem 0; padding: 1rem; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
+  .eq-band { display: flex; flex-direction: column; align-items: center; gap: 0.3rem; }
+  .eq-band label { font-family: var(--mono); font-size: 0.65rem; color: var(--muted); }
+  .eq-band input[type="range"] { -webkit-appearance: slider-vertical; width: 8px; height: 80px; accent-color: var(--accent); }
+  .file-input-wrap { margin: 1rem 0; }
+  .preset-btns { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 1rem 0; align-items: center; }
+  .preset-btns button { padding: 0.4rem 0.8rem; font-size: 0.75rem; background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: 4px; cursor: pointer; }
+  .preset-btns button:hover { border-color: var(--accent); color: var(--accent); }
+  .playback-controls { display: flex; align-items: center; gap: 1rem; margin: 1rem 0; flex-wrap: wrap; }
+  .playback-controls button { padding: 0.5rem 1rem; background: var(--accent); color: #0c0c0e; border: none; border-radius: 4px; cursor: pointer; font-family: var(--mono); }
+  .timeline-wrap { flex: 1; min-width: 200px; display: flex; align-items: center; gap: 0.5rem; }
+  .timeline-wrap input[type="range"] { flex: 1; accent-color: var(--accent); }
+  .time-display { font-family: var(--mono); font-size: 0.75rem; color: var(--muted); min-width: 90px; }
+  .queue-list { max-height: 120px; overflow-y: auto; margin-top: 0.5rem; }
+  .queue-item { padding: 0.3rem 0.5rem; font-size: 0.8rem; background: var(--surface2); border-radius: 4px; margin-bottom: 0.2rem; cursor: pointer; }
+  .queue-item.playing { border-left: 3px solid var(--accent); }
+  .queue-item:hover { background: var(--surface); }
+</style>
+{% endblock %}
+{% block content %}
+<div class="eq-wrap">
+  <h1 class="eq-title">Equalizer &amp; Visualizer</h1>
+  <p style="color: var(--muted); font-size: 0.9rem; margin-bottom: 1rem;">
+    Select one or more audio files for the queue. Play, pause, seek.
+  </p>
+  <div class="file-input-wrap">
+    <input type="file" id="audioFile" accept="audio/*" multiple />
+  </div>
+  <div class="queue-list" id="queueList"></div>
+  <div class="playback-controls">
+    <button id="playBtn">▶ Play</button>
+    <button id="prevBtn">⏮</button>
+    <button id="nextBtn">⏭</button>
+    <div class="timeline-wrap">
+      <span class="time-display" id="timeDisplay">0:00 / 0:00</span>
+      <input type="range" id="seekBar" min="0" max="100" value="0" />
+    </div>
+  </div>
+  <canvas id="vizCanvas" class="viz-canvas"></canvas>
+  <div class="eq-controls" id="eqControls">
+    <div class="eq-band"><label>32</label><input type="range" min="-12" max="12" value="0" data-freq="32" /></div>
+    <div class="eq-band"><label>64</label><input type="range" min="-12" max="12" value="0" data-freq="64" /></div>
+    <div class="eq-band"><label>125</label><input type="range" min="-12" max="12" value="0" data-freq="125" /></div>
+    <div class="eq-band"><label>250</label><input type="range" min="-12" max="12" value="0" data-freq="250" /></div>
+    <div class="eq-band"><label>500</label><input type="range" min="-12" max="12" value="0" data-freq="500" /></div>
+    <div class="eq-band"><label>1k</label><input type="range" min="-12" max="12" value="0" data-freq="1000" /></div>
+    <div class="eq-band"><label>2k</label><input type="range" min="-12" max="12" value="0" data-freq="2000" /></div>
+    <div class="eq-band"><label>4k</label><input type="range" min="-12" max="12" value="0" data-freq="4000" /></div>
+    <div class="eq-band"><label>8k</label><input type="range" min="-12" max="12" value="0" data-freq="8000" /></div>
+    <div class="eq-band"><label>16k</label><input type="range" min="-12" max="12" value="0" data-freq="16000" /></div>
+  </div>
+  <div class="preset-btns">
+    <button id="nextPresetBtn">Next preset</button>
+    <button id="toggleVizBtn">Toggle viz</button>
+  </div>
+</div>
+<audio id="audioEl" style="display:none"></audio>
+<script>
+(function(){
+  const canvas = document.getElementById('vizCanvas');
+  const audioEl = document.getElementById('audioEl');
+  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  let visualizer = null;
+  let sourceNode = null;
+  let analyser = null;
+  let eqNodes = [];
+  let rendering = false;
+  let presets = {};
+  let presetKeys = [];
+  let presetIdx = 0;
+  let queue = [];
+  let queueIdx = 0;
+
+  function fmtTime(s) {
+    if (!s || isNaN(s)) return '0:00';
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return m + ':' + (sec < 10 ? '0' : '') + sec;
+  }
+
+  function initViz() {
+    if (typeof butterchurn === 'undefined') return;
+    try {
+      visualizer = butterchurn.createVisualizer(audioCtx, canvas, {
+        width: canvas.clientWidth,
+        height: canvas.clientHeight,
+        pixelRatio: window.devicePixelRatio || 1,
+      });
+      if (typeof butterchurnPresets !== 'undefined') {
+        presets = butterchurnPresets.getPresets();
+        presetKeys = Object.keys(presets);
+        if (presetKeys.length) visualizer.loadPreset(presets[presetKeys[0]], 0);
+      }
+    } catch (e) { console.warn('Butterchurn init failed:', e); }
+  }
+
+  function buildGraph() {
+    const gains = [];
+    document.querySelectorAll('.eq-band input').forEach((inp) => { gains.push(parseFloat(inp.value)); });
+    const input = audioCtx.createGain();
+    input.gain.value = 1;
+    eqNodes = [];
+    const freqs = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
+    let prev = input;
+    freqs.forEach((f, i) => {
+      const filter = audioCtx.createBiquadFilter();
+      filter.type = 'peaking';
+      filter.frequency.value = f;
+      filter.Q.value = 1;
+      filter.gain.value = gains[i] || 0;
+      prev.connect(filter);
+      prev = filter;
+      eqNodes.push(filter);
+    });
+    prev.connect(audioCtx.destination);
+    if (analyser) prev.connect(analyser);
+    return input;
+  }
+
+  function connectAudioElement() {
+    if (sourceNode) sourceNode.disconnect();
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 256;
+    const input = buildGraph();
+    sourceNode = audioCtx.createMediaElementSource(audioEl);
+    sourceNode.connect(input);
+    input.connect(analyser);
+    if (visualizer) visualizer.connectAudio(analyser);
+    if (!rendering) {
+      rendering = true;
+      function render() { if (visualizer) visualizer.render(); requestAnimationFrame(render); }
+      requestAnimationFrame(render);
+    }
+  }
+
+  function renderQueue() {
+    const el = document.getElementById('queueList');
+    if (queue.length === 0) { el.innerHTML = '<p style="color:var(--muted);font-size:0.85rem;">Queue empty. Select files above.</p>'; return; }
+    el.innerHTML = queue.map((q, i) => '<div class="queue-item' + (i === queueIdx ? ' playing' : '') + '" data-idx="' + i + '">' + (q.name || 'Track ' + (i+1)) + '</div>').join('');
+    el.querySelectorAll('.queue-item').forEach(item => {
+      item.addEventListener('click', () => { queueIdx = parseInt(item.dataset.idx); playFromQueue(); });
+    });
+  }
+
+  function playFromQueue() {
+    if (queue.length === 0) return;
+    if (queueIdx >= queue.length) queueIdx = 0;
+    if (queueIdx < 0) queueIdx = queue.length - 1;
+    const item = queue[queueIdx];
+    if (item.url) URL.revokeObjectURL(item.url);
+    item.url = URL.createObjectURL(item.file);
+    audioEl.src = item.url;
+    audioCtx.resume();
+    connectAudioElement();
+    audioEl.play();
+    document.getElementById('playBtn').textContent = '❚❚ Pause';
+    renderQueue();
+  }
+
+  document.getElementById('audioFile').addEventListener('change', async e => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    for (const f of files) {
+      queue.push({ file: f, name: f.name, url: null });
+    }
+    e.target.value = '';
+    if (queue.length > 0 && queueIdx >= queue.length) queueIdx = 0;
+    renderQueue();
+    if (queue.length === 1 && !audioEl.src) playFromQueue();
+  });
+
+  document.getElementById('playBtn').addEventListener('click', () => {
+    if (queue.length === 0) return;
+    if (audioEl.paused) {
+      if (!audioEl.src) playFromQueue();
+      else { audioCtx.resume(); audioEl.play(); }
+      document.getElementById('playBtn').textContent = '❚❚ Pause';
+    } else {
+      audioEl.pause();
+      document.getElementById('playBtn').textContent = '▶ Play';
+    }
+  });
+
+  document.getElementById('prevBtn').addEventListener('click', () => {
+    if (queue.length === 0) return;
+    queueIdx--;
+    playFromQueue();
+  });
+
+  document.getElementById('nextBtn').addEventListener('click', () => {
+    if (queue.length === 0) return;
+    queueIdx++;
+    playFromQueue();
+  });
+
+  const seekBar = document.getElementById('seekBar');
+  seekBar.addEventListener('input', () => {
+    if (audioEl.duration) audioEl.currentTime = (seekBar.value / 100) * audioEl.duration;
+  });
+  audioEl.addEventListener('timeupdate', () => {
+    if (audioEl.duration) seekBar.value = (audioEl.currentTime / audioEl.duration) * 100;
+    document.getElementById('timeDisplay').textContent = fmtTime(audioEl.currentTime) + ' / ' + fmtTime(audioEl.duration);
+  });
+  audioEl.addEventListener('loadedmetadata', () => {
+    seekBar.value = 0;
+    document.getElementById('timeDisplay').textContent = '0:00 / ' + fmtTime(audioEl.duration);
+  });
+
+  audioEl.addEventListener('ended', () => {
+    queueIdx++;
+    if (queueIdx < queue.length) playFromQueue();
+    else { document.getElementById('playBtn').textContent = '▶ Play'; seekBar.value = 0; }
+  });
+
+  document.querySelectorAll('.eq-band input').forEach(inp => {
+    inp.addEventListener('input', () => {
+      const idx = [...document.querySelectorAll('.eq-band input')].indexOf(inp);
+      if (eqNodes[idx]) eqNodes[idx].gain.value = parseFloat(inp.value);
+    });
+  });
+
+  document.getElementById('nextPresetBtn').addEventListener('click', () => {
+    if (visualizer && presetKeys.length) {
+      presetIdx = (presetIdx + 1) % presetKeys.length;
+      visualizer.loadPreset(presets[presetKeys[presetIdx]], 2);
+    }
+  });
+
+  document.getElementById('toggleVizBtn').addEventListener('click', () => {
+    canvas.style.display = canvas.style.display === 'none' ? 'block' : 'none';
+  });
+
+  initViz();
+  renderQueue();
+  window.addEventListener('resize', () => {
+    if (visualizer) visualizer.setRendererSize(canvas.clientWidth, canvas.clientHeight);
+  });
+})();
+</script>
+{% endblock %}
