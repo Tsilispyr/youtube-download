@@ -1,0 +1,235 @@
+{% extends "base.html" %}
+{% block title %}Admin — AudioWeb{% endblock %}
+{% block head %}
+<style>
+  .admin-wrap { max-width: 1100px; margin: 2rem auto; padding: 1rem; }
+  .admin-header { display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+  .admin-title { font-family: var(--mono); font-size: 1.2rem; color: var(--accent); }
+  .stat-cards { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem; }
+  .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.5rem; min-width: 120px; }
+  .stat-card .val { font-family: var(--mono); font-size: 1.8rem; color: var(--accent); }
+  .stat-card .lbl { font-size: 0.75rem; color: var(--muted); margin-top: 0.2rem; }
+  .search-bar { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+  .search-bar input { flex: 1; padding: 0.5rem 0.75rem; background: var(--surface); border: 1px solid var(--border); color: var(--text); border-radius: 4px; font-family: var(--mono); font-size: 0.85rem; }
+  .users-table { width: 100%; border-collapse: collapse; background: var(--surface); border-radius: 8px; overflow: hidden; border: 1px solid var(--border); }
+  .users-table th { background: var(--surface2); color: var(--muted); font-family: var(--mono); font-size: 0.7rem; padding: 0.6rem 0.75rem; text-align: left; border-bottom: 1px solid var(--border); text-transform: uppercase; letter-spacing: 0.05em; }
+  .users-table td { padding: 0.6rem 0.75rem; font-size: 0.85rem; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  .users-table tr:last-child td { border-bottom: none; }
+  .users-table tr:hover td { background: var(--surface2); }
+  .badge { display: inline-block; padding: 0.15rem 0.45rem; border-radius: 3px; font-size: 0.7rem; font-family: var(--mono); }
+  .badge-green { background: rgba(71,255,184,0.15); color: var(--ok); }
+  .badge-yellow { background: rgba(232,255,71,0.15); color: var(--accent); }
+  .badge-red { background: rgba(255,87,87,0.15); color: var(--err); }
+  .badge-blue { background: rgba(71,184,255,0.15); color: var(--accent2); }
+  .action-btn { padding: 0.25rem 0.5rem; font-size: 0.72rem; border-radius: 3px; cursor: pointer; font-family: var(--mono); border: 1px solid; transition: all 0.15s; }
+  .btn-edit { background: transparent; border-color: var(--accent2); color: var(--accent2); }
+  .btn-edit:hover { background: var(--accent2); color: #0c0c0e; }
+  .btn-delete { background: transparent; border-color: var(--err); color: var(--err); }
+  .btn-delete:hover { background: var(--err); color: #0c0c0e; }
+  .btn-admin { background: transparent; border-color: var(--accent); color: var(--accent); }
+  .btn-admin:hover { background: var(--accent); color: #0c0c0e; }
+
+  /* Modal */
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 100; align-items: center; justify-content: center; }
+  .modal-overlay.open { display: flex; }
+  .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.5rem; min-width: 340px; max-width: 480px; width: 90%; }
+  .modal h2 { font-family: var(--mono); font-size: 1rem; color: var(--accent); margin-bottom: 1rem; }
+  .form-row { margin-bottom: 0.75rem; }
+  .form-row label { display: block; font-size: 0.75rem; color: var(--muted); margin-bottom: 0.25rem; font-family: var(--mono); }
+  .form-row input[type="text"], .form-row input[type="email"] { width: 100%; padding: 0.5rem; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 4px; font-size: 0.85rem; }
+  .form-row .toggle-row { display: flex; gap: 1rem; }
+  .form-row .toggle-row label { display: flex; align-items: center; gap: 0.4rem; cursor: pointer; color: var(--text); font-family: var(--sans); font-size: 0.85rem; }
+  .modal-actions { display: flex; gap: 0.75rem; margin-top: 1.25rem; justify-content: flex-end; }
+  .btn-primary { padding: 0.5rem 1rem; background: var(--accent); color: #0c0c0e; border: none; border-radius: 4px; cursor: pointer; font-family: var(--mono); font-size: 0.8rem; }
+  .btn-secondary { padding: 0.5rem 1rem; background: transparent; border: 1px solid var(--border); color: var(--muted); border-radius: 4px; cursor: pointer; font-family: var(--mono); font-size: 0.8rem; }
+  .toast { position: fixed; bottom: 1.5rem; right: 1.5rem; background: var(--surface2); border: 1px solid var(--border); color: var(--text); padding: 0.75rem 1.25rem; border-radius: 6px; font-family: var(--mono); font-size: 0.8rem; z-index: 200; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+  .toast.show { opacity: 1; }
+  .toast.ok { border-color: var(--ok); color: var(--ok); }
+  .toast.err { border-color: var(--err); color: var(--err); }
+</style>
+{% endblock %}
+{% block content %}
+<div class="admin-wrap">
+  <div class="admin-header">
+    <span class="admin-title">⚙ Admin Panel</span>
+    <span style="color:var(--muted);font-size:0.8rem;">Logged in as {{ current_user.email }}</span>
+  </div>
+
+  <div class="stat-cards" id="statCards">
+    <div class="stat-card"><div class="val" id="sTotalUsers">—</div><div class="lbl">Total Users</div></div>
+    <div class="stat-card"><div class="val" id="sVerified">—</div><div class="lbl">Verified</div></div>
+    <div class="stat-card"><div class="val" id="sTotalSongs">—</div><div class="lbl">Songs</div></div>
+    <div class="stat-card"><div class="val" id="sAdmins">—</div><div class="lbl">Admins</div></div>
+  </div>
+
+  <div class="search-bar">
+    <input type="text" id="searchInput" placeholder="Filter by email or name…" />
+  </div>
+
+  <table class="users-table" id="usersTable">
+    <thead>
+      <tr>
+        <th>ID</th><th>Email</th><th>Name</th><th>Status</th><th>Songs</th><th>Joined</th><th>Actions</th>
+      </tr>
+    </thead>
+    <tbody id="usersBody"></tbody>
+  </table>
+</div>
+
+<!-- Edit Modal -->
+<div class="modal-overlay" id="editModal">
+  <div class="modal">
+    <h2>Edit User</h2>
+    <input type="hidden" id="editUserId" />
+    <div class="form-row"><label>Email</label><input type="email" id="editEmail" /></div>
+    <div class="form-row"><label>Display Name</label><input type="text" id="editName" /></div>
+    <div class="form-row">
+      <div class="toggle-row">
+        <label><input type="checkbox" id="editVerified" /> Email Verified</label>
+        <label><input type="checkbox" id="editAdmin" /> Admin</label>
+        <label><input type="checkbox" id="editActive" /> Active</label>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn-primary" onclick="saveEdit()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let allUsers = [];
+
+async function loadStats() {
+  const r = await fetch('/AudioWeb/admin/api/stats');
+  const d = await r.json();
+  document.getElementById('sTotalUsers').textContent = d.total_users;
+  document.getElementById('sVerified').textContent = d.verified_users;
+  document.getElementById('sTotalSongs').textContent = d.total_songs;
+  document.getElementById('sAdmins').textContent = d.admin_users;
+}
+
+async function loadUsers() {
+  const r = await fetch('/AudioWeb/admin/api/users');
+  const d = await r.json();
+  allUsers = d.users || [];
+  renderUsers(allUsers);
+}
+
+function renderUsers(users) {
+  const body = document.getElementById('usersBody');
+  if (!users.length) {
+    body.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:2rem;">No users found</td></tr>';
+    return;
+  }
+  body.innerHTML = users.map(u => `
+    <tr data-id="${u.id}">
+      <td style="color:var(--muted);font-family:var(--mono);font-size:0.75rem;">${u.id}</td>
+      <td><span style="font-family:var(--mono);font-size:0.8rem;">${esc(u.email)}</span></td>
+      <td>${esc(u.display_name) || '<span style="color:var(--muted)">—</span>'}</td>
+      <td>
+        ${u.is_admin ? '<span class="badge badge-yellow">admin</span> ' : ''}
+        ${u.email_verified ? '<span class="badge badge-green">verified</span>' : '<span class="badge badge-red">unverified</span>'}
+        ${!u.is_active ? ' <span class="badge badge-red">disabled</span>' : ''}
+      </td>
+      <td style="font-family:var(--mono);font-size:0.8rem;">${u.song_count}</td>
+      <td style="font-size:0.75rem;color:var(--muted);">${u.created_at}</td>
+      <td>
+        <button class="action-btn btn-edit" onclick="openEdit(${u.id})">Edit</button>
+        ${u.email_verified ? '' : `<button class="action-btn btn-admin" onclick="verifyUser(${u.id})" style="margin-left:4px;">Verify</button>`}
+        <button class="action-btn btn-delete" onclick="deleteUser(${u.id},'${esc(u.email)}')" style="margin-left:4px;">Delete</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function esc(s) {
+  const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML;
+}
+
+document.getElementById('searchInput').addEventListener('input', e => {
+  const q = e.target.value.toLowerCase();
+  if (!q) { renderUsers(allUsers); return; }
+  renderUsers(allUsers.filter(u =>
+    u.email.toLowerCase().includes(q) ||
+    (u.display_name || '').toLowerCase().includes(q)
+  ));
+});
+
+function openEdit(id) {
+  const u = allUsers.find(x => x.id === id);
+  if (!u) return;
+  document.getElementById('editUserId').value = id;
+  document.getElementById('editEmail').value = u.email;
+  document.getElementById('editName').value = u.display_name || '';
+  document.getElementById('editVerified').checked = u.email_verified;
+  document.getElementById('editAdmin').checked = u.is_admin;
+  document.getElementById('editActive').checked = u.is_active;
+  document.getElementById('editModal').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('editModal').classList.remove('open');
+}
+
+async function saveEdit() {
+  const id = parseInt(document.getElementById('editUserId').value);
+  const payload = {
+    email: document.getElementById('editEmail').value.trim(),
+    display_name: document.getElementById('editName').value.trim(),
+    email_verified: document.getElementById('editVerified').checked,
+    is_admin: document.getElementById('editAdmin').checked,
+    is_active: document.getElementById('editActive').checked,
+  };
+  const r = await fetch(`/AudioWeb/admin/api/users/${id}`, {
+    method: 'PATCH',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(payload),
+  });
+  const d = await r.json();
+  if (d.ok) {
+    showToast('User updated', 'ok');
+    closeModal();
+    await loadUsers();
+    await loadStats();
+  } else {
+    showToast(d.error || 'Failed', 'err');
+  }
+}
+
+async function verifyUser(id) {
+  const r = await fetch(`/AudioWeb/admin/api/users/${id}`, {
+    method: 'PATCH',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({email_verified: true}),
+  });
+  const d = await r.json();
+  if (d.ok) { showToast('User verified', 'ok'); await loadUsers(); await loadStats(); }
+  else showToast(d.error || 'Failed', 'err');
+}
+
+async function deleteUser(id, email) {
+  if (!confirm(`Delete user "${email}" and all their songs? This cannot be undone.`)) return;
+  const r = await fetch(`/AudioWeb/admin/api/users/${id}`, { method: 'DELETE' });
+  const d = await r.json();
+  if (d.ok) { showToast('User deleted', 'ok'); await loadUsers(); await loadStats(); }
+  else showToast(d.error || 'Failed', 'err');
+}
+
+function showToast(msg, type='ok') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = `toast ${type} show`;
+  setTimeout(() => t.classList.remove('show'), 2800);
+}
+
+document.getElementById('editModal').addEventListener('click', e => {
+  if (e.target === document.getElementById('editModal')) closeModal();
+});
+
+loadStats();
+loadUsers();
+</script>
+{% endblock %}
