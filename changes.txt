@@ -1,0 +1,18 @@
+error at player page:
+Uncaught ReferenceError: AWSession is not defined
+    <anonymous> http://localhost:5000/AudioWorld/Player/:878
+    <anonymous> http://localhost:5000/AudioWorld/Player/:1377
+
+
+error pressing vault button at player page
+Uncaught ReferenceError: switchTab is not defined
+    onclick http://localhost:5000/AudioWorld/Player/:1
+
+on both equalizer and player pages, the visualizer is just black and not presenting visuals according to music playing,
+
+at player page we need to have the vault at minio open for all users logged in or not to play music from the open library, showcase the songs' photo playing as well at both player and equalizer pages, some changes to frontend design might need to be implemented to look great
+
+also on download page when a link is pasted, keep the session alive. Meaning if user redirect to player or equalizer and returns to download we need the downloads to continue and if it hasent started downloading user need to continue where he left off. Same goes for player and equalzier, when music is playing we need the music and queue to keep alive when redirect happen, maybe make a widget that drops down to a bar on the bottom (with all music playing attirbutes, photo, title, all metadata that it has, duration etc and play pause ,next prevoius buttons, essentially a web player.)
+if react, vue etc is needed and better suited its ok.
+
+

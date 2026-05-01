@@ -1,11 +1,5 @@
 """
 AudioWeb / AudioWorld — YT Downloader, Equalizer, Player.
-Routes:
-  /                      → redirect to /AudioWeb/yt-download
-  /AudioWeb/yt-download  → Downloader
-  /AudioWeb/equalizer    → Equalizer standalone
-  /AudioWorld/Player     → Player (library, equalizer, visualizer)
-  /AudioWeb/register, /login, /logout, /verify
 """
 import os
 from flask import Flask, redirect, url_for
@@ -14,8 +8,7 @@ from config import Config
 from extensions import db, login_manager, mail
 from models import User
 
-# Blueprints
-from blueprints import auth_bp, yt_download_bp, equalizer_bp, player_bp
+from blueprints import auth_bp, yt_download_bp, spotify_download_bp, equalizer_bp, player_bp, admin_bp
 
 
 def create_app(config_class=Config) -> Flask:
@@ -26,7 +19,7 @@ def create_app(config_class=Config) -> Flask:
     mail.init_app(app)
     login_manager.init_app(app)
     login_manager.login_view = "auth.login"
-    login_manager.login_message = "Please log in to access the player."
+    login_manager.login_message = "Please log in to access this page."
 
     @login_manager.user_loader
     def load_user(user_id):
@@ -34,8 +27,10 @@ def create_app(config_class=Config) -> Flask:
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(yt_download_bp)
+    app.register_blueprint(spotify_download_bp)
     app.register_blueprint(equalizer_bp)
     app.register_blueprint(player_bp)
+    app.register_blueprint(admin_bp)
 
     @app.route("/")
     def index():
@@ -43,7 +38,6 @@ def create_app(config_class=Config) -> Flask:
 
     @app.route("/favicon.ico")
     def favicon():
-        import os
         p = os.path.join(app.static_folder or "", "favicon.ico")
         if os.path.isfile(p):
             return app.send_static_file("favicon.ico")
@@ -51,6 +45,14 @@ def create_app(config_class=Config) -> Flask:
 
     with app.app_context():
         db.create_all()
+
+        # Auto-promote first user to admin if no admin exists (dev convenience)
+        admin_email = os.environ.get("ADMIN_EMAIL", "")
+        if admin_email and User.query.filter_by(is_admin=True).count() == 0:
+            u = User.query.filter_by(email=admin_email.lower()).first()
+            if u:
+                u.is_admin = True
+                db.session.commit()
 
     return app
 

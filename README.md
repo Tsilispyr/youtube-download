@@ -104,10 +104,10 @@ Creates `.env` from `.env.example`, then starts all services. Edit `.env` to set
 
 If port 9000 or 9001 is already in use, add to `.env`:
 ```
-MINIO_API_PORT=9000
-MINIO_CONSOLE_PORT=9001
+MINIO_API_PORT=19000
+MINIO_CONSOLE_PORT=19001
 ```
-Then use http://localhost:9001 for the MinIO UI.
+Then use http://localhost:19001 for the MinIO UI.
 
 Data persists in Docker volumes `postgres_data` and `minio_data`.
 
