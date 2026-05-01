@@ -4,246 +4,801 @@
 <script src="https://unpkg.com/butterchurn@2.6.7/lib/butterchurn.min.js"></script>
 <script src="https://unpkg.com/butterchurn-presets@2.4.7/lib/butterchurnPresets.min.js"></script>
 <style>
-  .eq-wrap { max-width: 900px; margin: 2rem auto; padding: 1.5rem; }
-  .eq-title { font-family: var(--mono); font-size: 1.2rem; margin-bottom: 1rem; color: var(--accent); }
-  .viz-canvas { width: 100%; max-width: 800px; height: 400px; background: #000; border-radius: 8px; display: block; margin: 1rem 0; }
-  .eq-controls { display: flex; flex-wrap: wrap; gap: 1rem; margin: 1rem 0; padding: 1rem; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
-  .eq-band { display: flex; flex-direction: column; align-items: center; gap: 0.3rem; }
-  .eq-band label { font-family: var(--mono); font-size: 0.65rem; color: var(--muted); }
-  .eq-band input[type="range"] { -webkit-appearance: slider-vertical; width: 8px; height: 80px; accent-color: var(--accent); }
-  .file-input-wrap { margin: 1rem 0; }
-  .preset-btns { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 1rem 0; align-items: center; }
-  .preset-btns button { padding: 0.4rem 0.8rem; font-size: 0.75rem; background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: 4px; cursor: pointer; }
-  .preset-btns button:hover { border-color: var(--accent); color: var(--accent); }
-  .playback-controls { display: flex; align-items: center; gap: 1rem; margin: 1rem 0; flex-wrap: wrap; }
-  .playback-controls button { padding: 0.5rem 1rem; background: var(--accent); color: #0c0c0e; border: none; border-radius: 4px; cursor: pointer; font-family: var(--mono); }
-  .timeline-wrap { flex: 1; min-width: 200px; display: flex; align-items: center; gap: 0.5rem; }
-  .timeline-wrap input[type="range"] { flex: 1; accent-color: var(--accent); }
-  .time-display { font-family: var(--mono); font-size: 0.75rem; color: var(--muted); min-width: 90px; }
-  .queue-list { max-height: 120px; overflow-y: auto; margin-top: 0.5rem; }
-  .queue-item { padding: 0.3rem 0.5rem; font-size: 0.8rem; background: var(--surface2); border-radius: 4px; margin-bottom: 0.2rem; cursor: pointer; }
-  .queue-item.playing { border-left: 3px solid var(--accent); }
-  .queue-item:hover { background: var(--surface); }
+:root {
+  --c32:#ff2020; --c64:#ff6a00; --c125:#ffaa00; --c250:#e8ff47;
+  --c500:#7fff47; --c1k:#00ff99; --c2k:#00e5ff; --c4k:#2979ff;
+  --c8k:#8c6bff; --c16k:#d946ef; --cvol:#47b8ff;
+}
+.eq-page { max-width: 1050px; margin: 1.5rem auto; padding: 0 1rem 2rem; }
+.eq-page-title { font-family: var(--mono); font-size: 1rem; color: var(--accent); letter-spacing: 0.1em; margin-bottom: 1rem; text-transform: uppercase; }
+
+/* File zone */
+.file-zone { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 0.75rem; }
+.file-zone label { padding: 0.45rem 0.9rem; background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: 4px; cursor: pointer; font-family: var(--mono); font-size: 0.78rem; transition: border-color 0.15s; }
+.file-zone label:hover { border-color: var(--accent); color: var(--accent); }
+.file-zone input[type="file"] { display: none; }
+.save-lib-btn { padding: 0.45rem 0.9rem; background: rgba(71,184,255,0.12); border: 1px solid var(--accent2); color: var(--accent2); border-radius: 4px; cursor: pointer; font-family: var(--mono); font-size: 0.78rem; transition: all 0.15s; }
+.save-lib-btn:hover { background: var(--accent2); color: #0c0c0e; }
+.save-lib-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.upload-status { font-size: 0.75rem; font-family: var(--mono); color: var(--muted); }
+
+/* Queue */
+.queue-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 0.5rem; margin-bottom: 0.75rem; }
+.queue-list { max-height: 140px; overflow-y: auto; }
+.queue-empty { color: var(--muted); font-size: 0.82rem; padding: 0.5rem; }
+.queue-item { padding: 0.3rem 0.6rem; font-size: 0.8rem; background: var(--surface2); border-radius: 4px; margin-bottom: 0.25rem; cursor: grab; display: flex; align-items: center; gap: 0.4rem; user-select: none; border-left: 3px solid transparent; }
+.queue-item.playing { border-left-color: var(--accent); background: rgba(232,255,71,0.06); }
+.queue-item:hover { background: #22222a; }
+.queue-item.drag-over { border: 1px dashed var(--accent2); }
+.queue-item.dragging { opacity: 0.35; }
+.drag-handle { color: var(--muted); font-size: 0.65rem; flex-shrink: 0; pointer-events: none; }
+.track-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.q-num { font-family: var(--mono); font-size: 0.65rem; color: var(--muted); width: 1.2rem; text-align: right; flex-shrink: 0; }
+
+/* Playback bar */
+.playback-bar { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.75rem; flex-wrap: wrap; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 0.6rem 0.85rem; }
+.pb-btn { width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--border); background: var(--surface2); color: var(--text); cursor: pointer; font-size: 0.85rem; display: flex; align-items: center; justify-content: center; transition: all 0.15s; flex-shrink: 0; }
+.pb-btn:hover { border-color: var(--accent); color: var(--accent); }
+.pb-btn.play { background: var(--accent); color: #0c0c0e; border-color: var(--accent); }
+.pb-btn.play:hover { background: #fff; }
+.now-playing { font-size: 0.78rem; color: var(--muted); flex: 1; min-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.timeline { display: flex; align-items: center; gap: 0.5rem; flex: 2; min-width: 160px; }
+.timeline input[type="range"] { flex: 1; accent-color: var(--accent); }
+.time-lbl { font-family: var(--mono); font-size: 0.68rem; color: var(--muted); white-space: nowrap; }
+
+/* Visualizer */
+.viz-canvas { width: 100%; height: 220px; background: #000; border-radius: 6px; display: block; margin-bottom: 0.75rem; border: 1px solid var(--border); }
+
+/* DJ Deck EQ */
+.dj-deck { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 0.75rem 0.75rem; margin-bottom: 0.75rem; position: relative; }
+.deck-label { font-family: var(--mono); font-size: 0.65rem; color: var(--muted); letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 0.75rem; }
+.deck-inner { display: flex; gap: 0; align-items: stretch; }
+
+/* dB scale ruler */
+.db-ruler { display: flex; flex-direction: column; justify-content: space-between; padding: 8px 0 0; width: 32px; flex-shrink: 0; }
+.db-ruler span { font-family: var(--mono); font-size: 0.6rem; color: var(--muted); text-align: right; padding-right: 6px; line-height: 1; }
+.db-ruler .zero { color: var(--text); }
+
+/* Band columns */
+.bands-row { display: flex; gap: 4px; flex: 1; align-items: flex-start; }
+.band-col { display: flex; flex-direction: column; align-items: center; gap: 4px; flex: 1; min-width: 0; }
+.band-track { position: relative; width: 100%; display: flex; justify-content: center; }
+
+/* Canvas meter behind slider */
+.band-meter { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border-radius: 4px; pointer-events: none; }
+
+/* Vertical slider */
+.band-slider {
+  writing-mode: vertical-lr;
+  direction: rtl;
+  width: 100%;
+  height: 160px;
+  cursor: pointer;
+  position: relative;
+  z-index: 2;
+  background: transparent;
+  -webkit-appearance: none;
+  appearance: none;
+  margin: 0;
+}
+.band-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 20px; height: 12px;
+  background: #fff;
+  border-radius: 3px;
+  cursor: grab;
+  box-shadow: 0 0 6px rgba(0,0,0,0.6);
+  border: 1px solid rgba(255,255,255,0.3);
+}
+.band-slider::-webkit-slider-runnable-track { background: transparent; width: 100%; }
+.band-slider::-moz-range-thumb {
+  width: 20px; height: 10px; background: #fff; border-radius: 3px; cursor: grab; border: none; box-shadow: 0 0 6px rgba(0,0,0,0.6);
+}
+.band-slider::-moz-range-track { background: transparent; }
+
+.band-val { font-family: var(--mono); font-size: 0.6rem; color: var(--text); min-width: 100%; text-align: center; }
+.band-freq { font-family: var(--mono); font-size: 0.6rem; color: var(--muted); text-align: center; min-width: 100%; }
+.band-divider { width: 1px; background: var(--border); margin: 0 2px; align-self: stretch; flex-shrink: 0; }
+
+/* Volume band is wider */
+.band-col.vol-col .band-slider { height: 160px; }
+.band-col.vol-col .band-freq { color: var(--cvol); }
+
+/* Preset bar */
+.preset-bar { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 0.6rem 0.85rem; }
+.preset-bar select { background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: 4px; padding: 0.3rem 0.5rem; font-family: var(--mono); font-size: 0.72rem; cursor: pointer; }
+.preset-bar select:focus { outline: none; border-color: var(--accent); }
+.preset-bar input[type="text"] { background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: 4px; padding: 0.3rem 0.6rem; font-family: var(--mono); font-size: 0.72rem; width: 130px; }
+.preset-bar input[type="text"]:focus { outline: none; border-color: var(--accent); }
+.pbar-btn { padding: 0.3rem 0.7rem; font-size: 0.72rem; font-family: var(--mono); border-radius: 4px; cursor: pointer; border: 1px solid var(--border); background: var(--surface2); color: var(--text); transition: all 0.15s; }
+.pbar-btn:hover { border-color: var(--accent); color: var(--accent); }
+.pbar-btn.reset { border-color: var(--err); color: var(--err); }
+.pbar-btn.reset:hover { background: var(--err); color: #0c0c0e; }
+.preset-sep { color: var(--border); }
 </style>
 {% endblock %}
+
 {% block content %}
-<div class="eq-wrap">
-  <h1 class="eq-title">Equalizer &amp; Visualizer</h1>
-  <p style="color: var(--muted); font-size: 0.9rem; margin-bottom: 1rem;">
-    Select one or more audio files for the queue. Play, pause, seek.
-  </p>
-  <div class="file-input-wrap">
+<div class="eq-page">
+  <div class="eq-page-title">≋ Equalizer &amp; Visualizer</div>
+
+  <!-- File input + save to library -->
+  <div class="file-zone">
+    <label for="audioFile">＋ Browse Audio</label>
     <input type="file" id="audioFile" accept="audio/*" multiple />
+    {% if current_user.is_authenticated %}
+    <button class="save-lib-btn" id="saveLibBtn" disabled>↑ Save Queue to Library</button>
+    <span class="upload-status" id="uploadStatus"></span>
+    {% endif %}
+    <span id="settingsRestoredBadge" style="display:none;font-family:var(--mono);font-size:0.68rem;color:var(--accent2);padding:0.2rem 0.5rem;border:1px solid rgba(71,184,255,0.3);border-radius:3px;">↩ EQ settings restored</span>
   </div>
-  <div class="queue-list" id="queueList"></div>
-  <div class="playback-controls">
-    <button id="playBtn">▶ Play</button>
-    <button id="prevBtn">⏮</button>
-    <button id="nextBtn">⏭</button>
-    <div class="timeline-wrap">
-      <span class="time-display" id="timeDisplay">0:00 / 0:00</span>
+
+  <!-- Queue -->
+  <div class="queue-panel">
+    <div class="queue-list" id="queueList"><p class="queue-empty">Select files above to add to queue.</p></div>
+  </div>
+
+  <!-- Playback controls -->
+  <div class="playback-bar">
+    <button class="pb-btn" id="prevBtn" title="Previous">⏮</button>
+    <button class="pb-btn play" id="playBtn">▶</button>
+    <button class="pb-btn" id="nextBtn" title="Next">⏭</button>
+    <span class="now-playing" id="nowPlaying">No track loaded</span>
+    <div class="timeline">
+      <span class="time-lbl" id="timeDisplay">0:00 / 0:00</span>
       <input type="range" id="seekBar" min="0" max="100" value="0" />
     </div>
   </div>
+
+  <!-- Visualizer -->
   <canvas id="vizCanvas" class="viz-canvas"></canvas>
-  <div class="eq-controls" id="eqControls">
-    <div class="eq-band"><label>32</label><input type="range" min="-12" max="12" value="0" data-freq="32" /></div>
-    <div class="eq-band"><label>64</label><input type="range" min="-12" max="12" value="0" data-freq="64" /></div>
-    <div class="eq-band"><label>125</label><input type="range" min="-12" max="12" value="0" data-freq="125" /></div>
-    <div class="eq-band"><label>250</label><input type="range" min="-12" max="12" value="0" data-freq="250" /></div>
-    <div class="eq-band"><label>500</label><input type="range" min="-12" max="12" value="0" data-freq="500" /></div>
-    <div class="eq-band"><label>1k</label><input type="range" min="-12" max="12" value="0" data-freq="1000" /></div>
-    <div class="eq-band"><label>2k</label><input type="range" min="-12" max="12" value="0" data-freq="2000" /></div>
-    <div class="eq-band"><label>4k</label><input type="range" min="-12" max="12" value="0" data-freq="4000" /></div>
-    <div class="eq-band"><label>8k</label><input type="range" min="-12" max="12" value="0" data-freq="8000" /></div>
-    <div class="eq-band"><label>16k</label><input type="range" min="-12" max="12" value="0" data-freq="16000" /></div>
+
+  <!-- DJ Deck EQ -->
+  <div class="dj-deck">
+    <div class="deck-label">10-Band Equalizer</div>
+    <div class="deck-inner">
+      <div class="db-ruler">
+        <span>+12</span><span>+6</span><span class="zero">0</span><span>-6</span><span>-12</span>
+      </div>
+      <div class="bands-row" id="bandsRow">
+        <!-- Generated by JS -->
+      </div>
+    </div>
   </div>
-  <div class="preset-btns">
-    <button id="nextPresetBtn">Next preset</button>
-    <button id="toggleVizBtn">Toggle viz</button>
+
+  <!-- Preset / controls bar -->
+  <div class="preset-bar">
+    <button class="pbar-btn reset" id="resetBtn">RESET</button>
+    <span class="preset-sep">|</span>
+    <select id="builtinPreset" title="Built-in presets">
+      <option value="">— EQ Preset —</option>
+      <option value="flat">Flat</option>
+      <option value="bass">Bass Boost</option>
+      <option value="treble">Treble Boost</option>
+      <option value="rock">Rock</option>
+      <option value="pop">Pop</option>
+      <option value="vocal">Vocal</option>
+      <option value="electronic">Electronic</option>
+      <option value="classical">Classical</option>
+      <option value="lounge">Lounge</option>
+    </select>
+    <span class="preset-sep">|</span>
+    <input type="text" id="presetNameInput" placeholder="My preset name…" />
+    <button class="pbar-btn" id="savePresetBtn">SAVE</button>
+    <select id="savedPresetSelect" title="Saved presets">
+      <option value="">— Saved Presets —</option>
+    </select>
+    <button class="pbar-btn" id="deletePresetBtn">DELETE</button>
+    <span class="preset-sep">|</span>
+    <button class="pbar-btn" id="nextVizBtn">NEXT VIZ</button>
+    <button class="pbar-btn" id="toggleVizBtn">HIDE VIZ</button>
   </div>
 </div>
+
 <audio id="audioEl" style="display:none"></audio>
+
 <script>
-(function(){
-  const canvas = document.getElementById('vizCanvas');
-  const audioEl = document.getElementById('audioEl');
-  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  let visualizer = null;
-  let sourceNode = null;
-  let analyser = null;
-  let eqNodes = [];
-  let rendering = false;
-  let presets = {};
-  let presetKeys = [];
-  let presetIdx = 0;
-  let queue = [];
-  let queueIdx = 0;
+(function() {
+'use strict';
 
-  function fmtTime(s) {
-    if (!s || isNaN(s)) return '0:00';
-    const m = Math.floor(s / 60);
-    const sec = Math.floor(s % 60);
-    return m + ':' + (sec < 10 ? '0' : '') + sec;
+// ── Band config ──────────────────────────────────────────────────────────────
+const BANDS = [
+  { freq: 32,    label: '32',  color: '#ff2020', key: 'sub'      },
+  { freq: 64,    label: '64',  color: '#ff6a00', key: 'bass'     },
+  { freq: 125,   label: '125', color: '#ffaa00', key: 'lbass'    },
+  { freq: 250,   label: '250', color: '#e8ff47', key: 'lmid'     },
+  { freq: 500,   label: '500', color: '#7fff47', key: 'mid'      },
+  { freq: 1000,  label: '1k',  color: '#00ff99', key: 'umid'     },
+  { freq: 2000,  label: '2k',  color: '#00e5ff', key: 'pres'     },
+  { freq: 4000,  label: '4k',  color: '#2979ff', key: 'brill'    },
+  { freq: 8000,  label: '8k',  color: '#8c6bff', key: 'air'      },
+  { freq: 16000, label: '16k', color: '#d946ef', key: 'ultra'    },
+];
+const VOL_COLOR = '#47b8ff';
+
+// Built-in presets [sub, 64, 125, 250, 500, 1k, 2k, 4k, 8k, 16k, vol(0-1)]
+const BUILTIN_PRESETS = {
+  flat:        [0,0,0,0,0,0,0,0,0,0, 1],
+  bass:        [8,7,5,3,0,-1,-1,0,0,0, 1],
+  treble:      [0,0,-1,0,0,1,2,4,6,7, 1],
+  rock:        [5,4,3,1,0,-1,0,2,4,5, 1],
+  pop:         [-1,0,2,4,4,3,1,0,0,-1, 1],
+  vocal:       [-4,-3,-2,1,5,5,3,1,-1,-2, 0.9],
+  electronic:  [7,6,3,-2,-3,0,3,2,4,5, 1],
+  classical:   [0,0,0,0,0,0,0,0,0,0, 0.85],
+  lounge:      [-2,-1,0,1,3,4,3,1,-1,-2, 0.75],
+};
+
+// ── State ────────────────────────────────────────────────────────────────────
+const canvas  = document.getElementById('vizCanvas');
+const audioEl = document.getElementById('audioEl');
+let audioCtx = null;
+let visualizer = null;
+let sourceNode = null;
+let analyser   = null;
+let eqNodes    = [];
+let gainNode   = null;
+let rendering  = false;
+let presets    = {};
+let presetKeys = [];
+let presetIdx  = 0;
+let queue      = [];
+let queueIdx   = 0;
+let dragSrcIdx = null;
+let meterCanvases = [];
+let meterCtxs  = [];
+let sliders    = [];
+let volSlider  = null;
+let animFrame  = null;
+
+// ── Restore from AWSession ────────────────────────────────────────────────────
+const _saved = (typeof AWSession !== 'undefined') ? AWSession.get() : null;
+// Restore gains (0-100 vol in session, 0-1 internally here)
+let eqGains   = (_saved && Array.isArray(_saved.eqGains) && _saved.eqGains.length === 10) ? [..._saved.eqGains] : BANDS.map(() => 0);
+let masterVol = (_saved && _saved.masterVol != null) ? (_saved.masterVol / 100) : 1.0;
+const _restoredQueueNames = (_saved && Array.isArray(_saved.eqQueueNames)) ? _saved.eqQueueNames : [];
+
+// ── Build EQ bands in DOM ─────────────────────────────────────────────────
+function buildBandsDOM() {
+  const row = document.getElementById('bandsRow');
+  row.innerHTML = '';
+  meterCanvases = []; meterCtxs = []; sliders = [];
+
+  BANDS.forEach((b, i) => {
+    const col = document.createElement('div');
+    col.className = 'band-col';
+    col.innerHTML = `
+      <div class="band-track" style="height:160px;">
+        <canvas class="band-meter" data-idx="${i}"></canvas>
+        <input type="range" class="band-slider" min="-12" max="12" step="0.5" value="${eqGains[i]}" data-idx="${i}" />
+      </div>
+      <div class="band-val" data-val="${i}">0 dB</div>
+      <div class="band-freq" style="color:${b.color}">${b.label}</div>
+    `;
+    row.appendChild(col);
+    // divider (except after last)
+    if (i < BANDS.length - 1) {
+      const div = document.createElement('div');
+      div.className = 'band-divider';
+      row.appendChild(div);
+    }
+
+    const mc = col.querySelector('.band-meter');
+    meterCanvases.push(mc);
+    meterCtxs.push(mc.getContext('2d'));
+    const sl = col.querySelector('.band-slider');
+    sliders.push(sl);
+    sl.addEventListener('input', () => {
+      eqGains[i] = parseFloat(sl.value);
+      updateBandVal(i);
+      if (eqNodes[i]) eqNodes[i].gain.value = eqGains[i];
+      if (typeof AWSession !== 'undefined') AWSession.update({ eqGains: [...eqGains], mode: 'equalizer' });
+    });
+  });
+
+  // Divider before volume
+  const div = document.createElement('div');
+  div.className = 'band-divider';
+  row.appendChild(div);
+
+  // Volume column
+  const vcol = document.createElement('div');
+  vcol.className = 'band-col vol-col';
+  vcol.innerHTML = `
+    <div class="band-track" style="height:160px;">
+      <canvas class="band-meter" data-vol="1"></canvas>
+      <input type="range" class="band-slider" id="volSliderEl" min="0" max="100" step="1" value="${Math.round(masterVol*100)}" />
+    </div>
+    <div class="band-val" id="volVal">${Math.round(masterVol*100)}%</div>
+    <div class="band-freq" style="color:${VOL_COLOR}">VOL</div>
+  `;
+  row.appendChild(vcol);
+  const vmc = vcol.querySelector('.band-meter');
+  meterCanvases.push(vmc);
+  meterCtxs.push(vmc.getContext('2d'));
+  volSlider = vcol.querySelector('#volSliderEl');
+  volSlider.addEventListener('input', () => {
+    masterVol = parseInt(volSlider.value) / 100;
+    document.getElementById('volVal').textContent = volSlider.value + '%';
+    if (gainNode) gainNode.gain.value = masterVol;
+    if (typeof AWSession !== 'undefined') AWSession.update({ masterVol: parseInt(volSlider.value), mode: 'equalizer' });
+  });
+}
+
+function updateBandVal(i) {
+  const v = eqGains[i];
+  const el = document.querySelector(`[data-val="${i}"]`);
+  if (el) el.textContent = (v > 0 ? '+' : '') + v.toFixed(v === Math.floor(v) ? 0 : 1) + ' dB';
+}
+
+// ── Audio graph ───────────────────────────────────────────────────────────
+function initAudioCtx() {
+  if (audioCtx) return;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+}
+
+function buildGraph() {
+  gainNode = audioCtx.createGain();
+  gainNode.gain.value = masterVol;
+
+  eqNodes = [];
+  const freqs = BANDS.map(b => b.freq);
+  let prev = gainNode;
+  freqs.forEach((f, i) => {
+    const filt = audioCtx.createBiquadFilter();
+    filt.type = 'peaking';
+    filt.frequency.value = f;
+    filt.Q.value = 1.2;
+    filt.gain.value = eqGains[i];
+    prev.connect(filt);
+    prev = filt;
+    eqNodes.push(filt);
+  });
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 2048;
+  analyser.smoothingTimeConstant = 0.8;
+  prev.connect(analyser);
+  analyser.connect(audioCtx.destination);
+  return gainNode;
+}
+
+function connectAudioElement() {
+  if (sourceNode) { try { sourceNode.disconnect(); } catch(e){} }
+  const input = buildGraph();
+  sourceNode = audioCtx.createMediaElementSource(audioEl);
+  sourceNode.connect(input);
+  if (visualizer) visualizer.connectAudio(analyser);
+  startRender();
+}
+
+// ── Butterchurn visualizer ─────────────────────────────────────────────────
+function initViz() {
+  if (visualizer || typeof butterchurn === 'undefined' || !audioCtx) return;
+  try {
+    const w = canvas.offsetWidth || 900;
+    const h = canvas.offsetHeight || 220;
+    canvas.width = w * (window.devicePixelRatio || 1);
+    canvas.height = h * (window.devicePixelRatio || 1);
+    canvas.style.width = w + 'px';
+    canvas.style.height = h + 'px';
+    visualizer = butterchurn.createVisualizer(audioCtx, canvas, {
+      width: canvas.width, height: canvas.height,
+      pixelRatio: window.devicePixelRatio || 1,
+    });
+    if (typeof butterchurnPresets !== 'undefined') {
+      presets = butterchurnPresets.getPresets();
+      presetKeys = Object.keys(presets);
+      if (presetKeys.length) visualizer.loadPreset(presets[presetKeys[0]], 0);
+    }
+    if (analyser) visualizer.connectAudio(analyser);
+  } catch(e) { console.warn('Butterchurn init failed:', e); }
+}
+
+function startRender() {
+  if (rendering) return;
+  rendering = true;
+  function loop() {
+    animFrame = requestAnimationFrame(loop);
+    if (visualizer) visualizer.render();
+    drawMeters();
   }
+  loop();
+}
 
-  function initViz() {
-    if (typeof butterchurn === 'undefined') return;
-    try {
-      visualizer = butterchurn.createVisualizer(audioCtx, canvas, {
-        width: canvas.clientWidth,
-        height: canvas.clientHeight,
-        pixelRatio: window.devicePixelRatio || 1,
+// ── Meter drawing ─────────────────────────────────────────────────────────
+function resizeMeterCanvases() {
+  meterCanvases.forEach(mc => {
+    const rect = mc.parentElement.getBoundingClientRect();
+    mc.width = Math.max(1, Math.round(rect.width));
+    mc.height = Math.max(1, Math.round(rect.height));
+  });
+}
+
+function drawMeters() {
+  if (!analyser) {
+    // draw background grid only
+    meterCanvases.forEach((mc, i) => drawBandBg(i));
+    return;
+  }
+  const freqData = new Uint8Array(analyser.frequencyBinCount);
+  analyser.getByteFrequencyData(freqData);
+  const sr = audioCtx ? audioCtx.sampleRate : 44100;
+  const binHz = sr / (analyser.fftSize);
+
+  BANDS.forEach((b, i) => {
+    const mc = meterCanvases[i];
+    const ctx = meterCtxs[i];
+    if (!mc.width || !mc.height) return;
+    const W = mc.width, H = mc.height;
+    ctx.clearRect(0, 0, W, H);
+
+    // Background gradient track
+    const grad = ctx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0,   hexAlpha(b.color, 0.7));
+    grad.addColorStop(0.5, hexAlpha(b.color, 0.25));
+    grad.addColorStop(1,   hexAlpha(b.color, 0.05));
+    ctx.fillStyle = grad;
+    ctx.roundRect(W*0.15, 0, W*0.7, H, 4);
+    ctx.fill();
+
+    // dB grid lines (at +12,+6,0,-6,-12 → y positions)
+    const dbToY = db => H * (1 - (db + 12) / 24);
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    ctx.lineWidth = 1;
+    [-12,-6,0,6,12].forEach(db => {
+      const y = dbToY(db);
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+    });
+    // Zero line more visible
+    ctx.strokeStyle = 'rgba(255,255,255,0.22)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(0, dbToY(0)); ctx.lineTo(W, dbToY(0)); ctx.stroke();
+
+    // Live level bar — find frequency level
+    const targetBin = Math.round(b.freq / binHz);
+    const span = Math.max(1, Math.round(targetBin * 0.3));
+    let sum = 0, cnt = 0;
+    for (let j = Math.max(0, targetBin - span); j <= Math.min(freqData.length-1, targetBin + span); j++) {
+      sum += freqData[j]; cnt++;
+    }
+    const level = cnt ? (sum / cnt) / 255 : 0;  // 0..1
+    const levelH = level * H;
+    const lvlGrad = ctx.createLinearGradient(0, H - levelH, 0, H);
+    lvlGrad.addColorStop(0, hexAlpha(b.color, 0.9));
+    lvlGrad.addColorStop(1, hexAlpha(b.color, 0.3));
+    ctx.fillStyle = lvlGrad;
+    ctx.fillRect(W*0.18, H - levelH, W*0.64, levelH);
+  });
+
+  // Volume meter (last canvas)
+  const vmc = meterCanvases[BANDS.length];
+  if (vmc && vmc.width && vmc.height) {
+    const vctx = meterCtxs[BANDS.length];
+    const W = vmc.width, H = vmc.height;
+    vctx.clearRect(0, 0, W, H);
+
+    // background
+    const bg = vctx.createLinearGradient(0, 0, 0, H);
+    bg.addColorStop(0, 'rgba(71,184,255,0.5)');
+    bg.addColorStop(1, 'rgba(71,184,255,0.05)');
+    vctx.fillStyle = bg;
+    vctx.roundRect(W*0.15, 0, W*0.7, H, 4);
+    vctx.fill();
+
+    // RMS level
+    const td = new Uint8Array(analyser.frequencyBinCount);
+    analyser.getByteTimeDomainData(td);
+    let rms = 0;
+    td.forEach(v => { const s = (v-128)/128; rms += s*s; });
+    rms = Math.sqrt(rms / td.length);
+    const lvH = Math.min(rms * 3.5, 1) * H;
+
+    // Color zones: green → yellow → red
+    const zones = vctx.createLinearGradient(0, H - lvH, 0, H);
+    zones.addColorStop(0, '#ff4444');
+    zones.addColorStop(0.3, '#ffcc00');
+    zones.addColorStop(1, '#47ffb8');
+    vctx.fillStyle = zones;
+    vctx.fillRect(W*0.18, H - lvH, W*0.64, lvH);
+
+    // Tick lines
+    vctx.strokeStyle = 'rgba(255,255,255,0.1)';
+    [0.25, 0.5, 0.75].forEach(p => {
+      vctx.beginPath(); vctx.moveTo(0, H*p); vctx.lineTo(W, H*p); vctx.stroke();
+    });
+  }
+}
+
+function drawBandBg(i) {
+  if (i >= meterCanvases.length) return;
+  const b = i < BANDS.length ? BANDS[i] : null;
+  const mc = meterCanvases[i];
+  const ctx = meterCtxs[i];
+  if (!mc || !mc.width) return;
+  const W = mc.width, H = mc.height;
+  ctx.clearRect(0, 0, W, H);
+  const color = b ? b.color : VOL_COLOR;
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, hexAlpha(color, 0.5));
+  grad.addColorStop(1, hexAlpha(color, 0.05));
+  ctx.fillStyle = grad;
+  ctx.roundRect(W*0.15, 0, W*0.7, H, 4);
+  ctx.fill();
+}
+
+function hexAlpha(hex, a) {
+  const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+  return `rgba(${r},${g},${b},${a})`;
+}
+
+// ── Queue ────────────────────────────────────────────────────────────────
+function renderQueue() {
+  const el = document.getElementById('queueList');
+  if (!queue.length) {
+    el.innerHTML = '<p class="queue-empty">Select files above to add to queue.</p>';
+    {% if current_user.is_authenticated %}
+    document.getElementById('saveLibBtn').disabled = true;
+    {% endif %}
+    return;
+  }
+  {% if current_user.is_authenticated %}
+  document.getElementById('saveLibBtn').disabled = false;
+  {% endif %}
+  el.innerHTML = queue.map((q, i) => `
+    <div class="queue-item${i===queueIdx?' playing':''}" data-idx="${i}" draggable="true">
+      <span class="q-num">${i+1}</span>
+      <span class="drag-handle">⠿</span>
+      <span class="track-name">${escHtml(q.name||'Track '+(i+1))}</span>
+    </div>
+  `).join('');
+  el.querySelectorAll('.queue-item').forEach(item => {
+    const idx = parseInt(item.dataset.idx);
+    item.querySelector('.track-name').addEventListener('click', () => { queueIdx=idx; playFromQueue(); });
+    item.addEventListener('dragstart', e => { dragSrcIdx=idx; item.classList.add('dragging'); e.dataTransfer.effectAllowed='move'; });
+    item.addEventListener('dragend', () => { item.classList.remove('dragging'); el.querySelectorAll('.queue-item').forEach(x=>x.classList.remove('drag-over')); });
+    item.addEventListener('dragover', e => { e.preventDefault(); el.querySelectorAll('.queue-item').forEach(x=>x.classList.remove('drag-over')); item.classList.add('drag-over'); });
+    item.addEventListener('drop', e => {
+      e.preventDefault();
+      if (dragSrcIdx===null||dragSrcIdx===idx) return;
+      const moved = queue.splice(dragSrcIdx,1)[0];
+      const dest = dragSrcIdx < idx ? idx-1 : idx;
+      queue.splice(dest,0,moved);
+      if (queueIdx===dragSrcIdx) queueIdx=dest;
+      else if (dragSrcIdx<queueIdx&&dest>=queueIdx) queueIdx--;
+      else if (dragSrcIdx>queueIdx&&dest<=queueIdx) queueIdx++;
+      dragSrcIdx=null; renderQueue();
+    });
+  });
+}
+
+function playFromQueue() {
+  if (!queue.length) return;
+  if (queueIdx >= queue.length) queueIdx=0;
+  if (queueIdx < 0) queueIdx=queue.length-1;
+  const item = queue[queueIdx];
+  if (item.url) URL.revokeObjectURL(item.url);
+  item.url = URL.createObjectURL(item.file);
+  initAudioCtx();
+  audioEl.src = item.url;
+  audioCtx.resume().then(() => {
+    if (!sourceNode) connectAudioElement();
+    if (!visualizer) initViz();
+    audioEl.play().catch(e=>console.warn('play error:',e));
+    document.getElementById('playBtn').textContent='❚❚';
+    document.getElementById('nowPlaying').textContent=item.name||'Track '+(queueIdx+1);
+    // Persist EQ state + track info (files can't be restored, but settings + names can)
+    if (typeof AWSession !== 'undefined') {
+      AWSession.update({
+        mode: 'equalizer',
+        trackTitle: item.name || 'Track ' + (queueIdx + 1),
+        trackArtist: '',
+        streamUrl: null,
+        isPlaying: true,
+        eqGains: [...eqGains],
+        masterVol: Math.round(masterVol * 100),
+        eqQueueNames: queue.map(q => q.name),
+        eqQueueIdx: queueIdx,
       });
-      if (typeof butterchurnPresets !== 'undefined') {
-        presets = butterchurnPresets.getPresets();
-        presetKeys = Object.keys(presets);
-        if (presetKeys.length) visualizer.loadPreset(presets[presetKeys[0]], 0);
-      }
-    } catch (e) { console.warn('Butterchurn init failed:', e); }
-  }
-
-  function buildGraph() {
-    const gains = [];
-    document.querySelectorAll('.eq-band input').forEach((inp) => { gains.push(parseFloat(inp.value)); });
-    const input = audioCtx.createGain();
-    input.gain.value = 1;
-    eqNodes = [];
-    const freqs = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
-    let prev = input;
-    freqs.forEach((f, i) => {
-      const filter = audioCtx.createBiquadFilter();
-      filter.type = 'peaking';
-      filter.frequency.value = f;
-      filter.Q.value = 1;
-      filter.gain.value = gains[i] || 0;
-      prev.connect(filter);
-      prev = filter;
-      eqNodes.push(filter);
-    });
-    prev.connect(audioCtx.destination);
-    if (analyser) prev.connect(analyser);
-    return input;
-  }
-
-  function connectAudioElement() {
-    if (sourceNode) sourceNode.disconnect();
-    analyser = audioCtx.createAnalyser();
-    analyser.fftSize = 256;
-    const input = buildGraph();
-    sourceNode = audioCtx.createMediaElementSource(audioEl);
-    sourceNode.connect(input);
-    input.connect(analyser);
-    if (visualizer) visualizer.connectAudio(analyser);
-    if (!rendering) {
-      rendering = true;
-      function render() { if (visualizer) visualizer.render(); requestAnimationFrame(render); }
-      requestAnimationFrame(render);
-    }
-  }
-
-  function renderQueue() {
-    const el = document.getElementById('queueList');
-    if (queue.length === 0) { el.innerHTML = '<p style="color:var(--muted);font-size:0.85rem;">Queue empty. Select files above.</p>'; return; }
-    el.innerHTML = queue.map((q, i) => '<div class="queue-item' + (i === queueIdx ? ' playing' : '') + '" data-idx="' + i + '">' + (q.name || 'Track ' + (i+1)) + '</div>').join('');
-    el.querySelectorAll('.queue-item').forEach(item => {
-      item.addEventListener('click', () => { queueIdx = parseInt(item.dataset.idx); playFromQueue(); });
-    });
-  }
-
-  function playFromQueue() {
-    if (queue.length === 0) return;
-    if (queueIdx >= queue.length) queueIdx = 0;
-    if (queueIdx < 0) queueIdx = queue.length - 1;
-    const item = queue[queueIdx];
-    if (item.url) URL.revokeObjectURL(item.url);
-    item.url = URL.createObjectURL(item.file);
-    audioEl.src = item.url;
-    audioCtx.resume();
-    connectAudioElement();
-    audioEl.play();
-    document.getElementById('playBtn').textContent = '❚❚ Pause';
-    renderQueue();
-  }
-
-  document.getElementById('audioFile').addEventListener('change', async e => {
-    const files = Array.from(e.target.files || []);
-    if (!files.length) return;
-    for (const f of files) {
-      queue.push({ file: f, name: f.name, url: null });
-    }
-    e.target.value = '';
-    if (queue.length > 0 && queueIdx >= queue.length) queueIdx = 0;
-    renderQueue();
-    if (queue.length === 1 && !audioEl.src) playFromQueue();
-  });
-
-  document.getElementById('playBtn').addEventListener('click', () => {
-    if (queue.length === 0) return;
-    if (audioEl.paused) {
-      if (!audioEl.src) playFromQueue();
-      else { audioCtx.resume(); audioEl.play(); }
-      document.getElementById('playBtn').textContent = '❚❚ Pause';
-    } else {
-      audioEl.pause();
-      document.getElementById('playBtn').textContent = '▶ Play';
     }
   });
-
-  document.getElementById('prevBtn').addEventListener('click', () => {
-    if (queue.length === 0) return;
-    queueIdx--;
-    playFromQueue();
-  });
-
-  document.getElementById('nextBtn').addEventListener('click', () => {
-    if (queue.length === 0) return;
-    queueIdx++;
-    playFromQueue();
-  });
-
-  const seekBar = document.getElementById('seekBar');
-  seekBar.addEventListener('input', () => {
-    if (audioEl.duration) audioEl.currentTime = (seekBar.value / 100) * audioEl.duration;
-  });
-  audioEl.addEventListener('timeupdate', () => {
-    if (audioEl.duration) seekBar.value = (audioEl.currentTime / audioEl.duration) * 100;
-    document.getElementById('timeDisplay').textContent = fmtTime(audioEl.currentTime) + ' / ' + fmtTime(audioEl.duration);
-  });
-  audioEl.addEventListener('loadedmetadata', () => {
-    seekBar.value = 0;
-    document.getElementById('timeDisplay').textContent = '0:00 / ' + fmtTime(audioEl.duration);
-  });
-
-  audioEl.addEventListener('ended', () => {
-    queueIdx++;
-    if (queueIdx < queue.length) playFromQueue();
-    else { document.getElementById('playBtn').textContent = '▶ Play'; seekBar.value = 0; }
-  });
-
-  document.querySelectorAll('.eq-band input').forEach(inp => {
-    inp.addEventListener('input', () => {
-      const idx = [...document.querySelectorAll('.eq-band input')].indexOf(inp);
-      if (eqNodes[idx]) eqNodes[idx].gain.value = parseFloat(inp.value);
-    });
-  });
-
-  document.getElementById('nextPresetBtn').addEventListener('click', () => {
-    if (visualizer && presetKeys.length) {
-      presetIdx = (presetIdx + 1) % presetKeys.length;
-      visualizer.loadPreset(presets[presetKeys[presetIdx]], 2);
-    }
-  });
-
-  document.getElementById('toggleVizBtn').addEventListener('click', () => {
-    canvas.style.display = canvas.style.display === 'none' ? 'block' : 'none';
-  });
-
-  initViz();
   renderQueue();
-  window.addEventListener('resize', () => {
-    if (visualizer) visualizer.setRendererSize(canvas.clientWidth, canvas.clientHeight);
+}
+
+// ── File input ───────────────────────────────────────────────────────────
+document.getElementById('audioFile').addEventListener('change', e => {
+  const files = Array.from(e.target.files||[]);
+  files.forEach(f => queue.push({file:f, name:f.name, url:null}));
+  e.target.value='';
+  renderQueue();
+  if (queue.length===files.length) playFromQueue();
+});
+
+// ── Playback controls ────────────────────────────────────────────────────
+document.getElementById('playBtn').addEventListener('click', () => {
+  if (!queue.length) return;
+  initAudioCtx();
+  if (audioEl.paused) {
+    if (!audioEl.src) { playFromQueue(); return; }
+    audioCtx.resume().then(()=>audioEl.play());
+    document.getElementById('playBtn').textContent='❚❚';
+  } else {
+    audioEl.pause();
+    document.getElementById('playBtn').textContent='▶';
+  }
+});
+document.getElementById('prevBtn').addEventListener('click', () => { if (!queue.length) return; queueIdx--; playFromQueue(); });
+document.getElementById('nextBtn').addEventListener('click', () => { if (!queue.length) return; queueIdx++; playFromQueue(); });
+
+audioEl.addEventListener('play',  () => document.getElementById('playBtn').textContent='❚❚');
+audioEl.addEventListener('pause', () => document.getElementById('playBtn').textContent='▶');
+audioEl.addEventListener('ended', () => { queueIdx++; if (queueIdx<queue.length) playFromQueue(); else document.getElementById('playBtn').textContent='▶'; });
+
+// Timeline
+const seekBar = document.getElementById('seekBar');
+seekBar.addEventListener('input', () => { if (audioEl.duration) audioEl.currentTime=(seekBar.value/100)*audioEl.duration; });
+audioEl.addEventListener('timeupdate', () => {
+  if (audioEl.duration) seekBar.value=(audioEl.currentTime/audioEl.duration)*100;
+  document.getElementById('timeDisplay').textContent=fmtTime(audioEl.currentTime)+' / '+fmtTime(audioEl.duration);
+});
+audioEl.addEventListener('loadedmetadata', () => {
+  seekBar.value=0;
+  document.getElementById('timeDisplay').textContent='0:00 / '+fmtTime(audioEl.duration);
+});
+
+function fmtTime(s) { if(!s||isNaN(s))return'0:00'; const m=Math.floor(s/60); return m+':'+(Math.floor(s%60)<10?'0':'')+Math.floor(s%60); }
+function escHtml(s) { const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+
+// ── EQ Preset system ─────────────────────────────────────────────────────
+function applyGains(gains) {
+  gains.slice(0,10).forEach((g,i) => {
+    eqGains[i] = g;
+    if (sliders[i]) sliders[i].value = g;
+    updateBandVal(i);
+    if (eqNodes[i]) eqNodes[i].gain.value = g;
   });
+  if (gains[10] !== undefined) {
+    masterVol = gains[10];
+    if (volSlider) volSlider.value = Math.round(masterVol*100);
+    document.getElementById('volVal').textContent = Math.round(masterVol*100)+'%';
+    if (gainNode) gainNode.gain.value = masterVol;
+  }
+}
+
+document.getElementById('resetBtn').addEventListener('click', () => {
+  applyGains([0,0,0,0,0,0,0,0,0,0,1]);
+  document.getElementById('builtinPreset').value='';
+});
+
+document.getElementById('builtinPreset').addEventListener('change', e => {
+  const p = BUILTIN_PRESETS[e.target.value];
+  if (p) applyGains(p);
+});
+
+// localStorage presets
+function getStoredPresets() {
+  try { return JSON.parse(localStorage.getItem('aw_eq_presets')||'{}'); } catch{return{};}
+}
+function saveStoredPresets(obj) {
+  localStorage.setItem('aw_eq_presets', JSON.stringify(obj));
+}
+function refreshSavedPresetSelect() {
+  const sel = document.getElementById('savedPresetSelect');
+  const stored = getStoredPresets();
+  sel.innerHTML = '<option value="">— Saved Presets —</option>' +
+    Object.keys(stored).map(k=>`<option value="${escHtml(k)}">${escHtml(k)}</option>`).join('');
+}
+
+document.getElementById('savePresetBtn').addEventListener('click', () => {
+  const name = document.getElementById('presetNameInput').value.trim();
+  if (!name) { alert('Enter a preset name first.'); return; }
+  const stored = getStoredPresets();
+  stored[name] = [...eqGains, masterVol];
+  saveStoredPresets(stored);
+  refreshSavedPresetSelect();
+  document.getElementById('presetNameInput').value='';
+});
+
+document.getElementById('savedPresetSelect').addEventListener('change', e => {
+  if (!e.target.value) return;
+  const stored = getStoredPresets();
+  if (stored[e.target.value]) applyGains(stored[e.target.value]);
+});
+
+document.getElementById('deletePresetBtn').addEventListener('click', () => {
+  const sel = document.getElementById('savedPresetSelect');
+  if (!sel.value) return;
+  if (!confirm(`Delete preset "${sel.value}"?`)) return;
+  const stored = getStoredPresets();
+  delete stored[sel.value];
+  saveStoredPresets(stored);
+  refreshSavedPresetSelect();
+});
+
+// ── Viz controls ─────────────────────────────────────────────────────────
+document.getElementById('nextVizBtn').addEventListener('click', () => {
+  if (visualizer && presetKeys.length) {
+    presetIdx=(presetIdx+1)%presetKeys.length;
+    visualizer.loadPreset(presets[presetKeys[presetIdx]], 2);
+  }
+});
+document.getElementById('toggleVizBtn').addEventListener('click', () => {
+  const c = document.getElementById('vizCanvas');
+  const hidden = c.style.display==='none';
+  c.style.display = hidden ? 'block' : 'none';
+  document.getElementById('toggleVizBtn').textContent = hidden ? 'HIDE VIZ' : 'SHOW VIZ';
+});
+
+// ── Save queue to library (logged-in users) ───────────────────────────────
+{% if current_user.is_authenticated %}
+document.getElementById('saveLibBtn').addEventListener('click', async () => {
+  if (!queue.length) return;
+  const btn = document.getElementById('saveLibBtn');
+  const status = document.getElementById('uploadStatus');
+  btn.disabled = true;
+  let done=0, failed=0;
+  for (const item of queue) {
+    status.textContent = `Uploading ${item.name}…`;
+    const fd = new FormData();
+    fd.append('file', item.file, item.name);
+    try {
+      const r = await fetch('/AudioWeb/equalizer/api/upload-to-library', { method:'POST', body:fd });
+      const d = await r.json();
+      if (d.ok) { done++; if(d.already_exists) status.textContent=`${item.name} already in library`; }
+      else { failed++; status.textContent=`Failed: ${d.error||'unknown error'}`; }
+    } catch(e) { failed++; }
+  }
+  status.textContent = `✓ ${done} saved${failed?' · '+failed+' failed':''} to library`;
+  btn.disabled = false;
+});
+{% endif %}
+
+// ── Resize handlers ───────────────────────────────────────────────────────
+window.addEventListener('resize', () => {
+  if (visualizer) {
+    const w=canvas.offsetWidth||900, h=canvas.offsetHeight||220;
+    canvas.width=w*(window.devicePixelRatio||1);
+    canvas.height=h*(window.devicePixelRatio||1);
+    visualizer.setRendererSize(canvas.width, canvas.height);
+  }
+  resizeMeterCanvases();
+});
+
+// ── Save on unload / visibility change ─────────────────────────────────────
+function saveEqSession() {
+  if (typeof AWSession !== 'undefined') {
+    AWSession.update({ eqGains: [...eqGains], masterVol: Math.round(masterVol * 100), mode: 'equalizer', eqQueueNames: queue.map(q=>q.name), eqQueueIdx: queueIdx, isPlaying: !audioEl.paused });
+  }
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveEqSession(); });
+window.addEventListener('beforeunload', saveEqSession);
+// Save immediately when nav links clicked (more reliable)
+document.querySelectorAll('.nav a').forEach(a => { a.addEventListener('click', saveEqSession); });
+
+// ── Init ─────────────────────────────────────────────────────────────────
+buildBandsDOM();
+refreshSavedPresetSelect();
+
+// Show restored queue names (can't restore files, just display names)
+if (_restoredQueueNames.length > 0) {
+  const ql = document.getElementById('queueList');
+  ql.innerHTML = `<div style="font-family:var(--mono);font-size:0.72rem;color:var(--accent2);padding:0.4rem;background:rgba(71,184,255,0.07);border-radius:4px;border:1px solid rgba(71,184,255,0.2);margin-bottom:0.3rem;">↩ Previous queue (re-add files to resume):</div>` +
+    _restoredQueueNames.map(n => `<div class="queue-item" style="opacity:0.5;cursor:default;"><span class="drag-handle">⠿</span><span class="track-name">${n}</span></div>`).join('');
+} else {
+  renderQueue();
+}
+
+// Resize meter canvases after layout
+requestAnimationFrame(() => {
+  resizeMeterCanvases();
+  // start background rendering (grid only, no audio yet)
+  startRender();
+  // Show restored badge if EQ settings were non-default
+  if (_saved && _saved.mode === 'equalizer' && _saved.eqGains && _saved.eqGains.some(g => g !== 0)) {
+    const badge = document.getElementById('settingsRestoredBadge');
+    if (badge) { badge.style.display = ''; setTimeout(() => badge.style.display = 'none', 4000); }
+  }
+});
+
 })();
 </script>
 {% endblock %}

@@ -1,0 +1,400 @@
+{% extends "base.html" %}
+{% block title %}Spotify → MP3 Download{% endblock %}
+{% block head %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  .wrap { max-width: 860px; margin: 0 auto; padding: 2.5rem 1.5rem 5rem; }
+  header { display: flex; align-items: baseline; gap: 1rem; margin-bottom: 2.5rem; }
+  .logo { font-family: var(--mono); font-size: 1.35rem; font-weight: 700; color: #1DB954; }
+  .logo span { color: var(--accent2); }
+  .tagline { font-size: 0.78rem; color: var(--muted); font-family: var(--mono); }
+  .input-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; }
+  .input-label { font-family: var(--mono); font-size: 0.72rem; text-transform: uppercase; color: var(--muted); margin-bottom: 0.6rem; display: block; }
+  .url-row { display: flex; gap: 0.75rem; }
+  .url-input { flex: 1; background: var(--bg); border: 1px solid var(--border); border-radius: 5px; color: var(--text); font-family: var(--mono); padding: 0.7rem 1rem; }
+  .url-input:focus { border-color: #1DB954; outline: none; }
+  .btn { font-family: var(--mono); font-size: 0.78rem; font-weight: 700; padding: 0.7rem 1.3rem; border: none; border-radius: 5px; cursor: pointer; }
+  .btn-primary { background: #1DB954; color: #000; }
+  .btn-primary:hover { background: #1ed760; }
+  .btn-dl { background: var(--accent2); color: #0c0c0e; }
+  .btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+  .error-banner { background: rgba(255,87,87,0.08); border: 1px solid rgba(255,87,87,0.35); border-radius: 8px; color: var(--err); padding: 0.85rem 1rem; margin-bottom: 1rem; display: none; }
+  .info-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.2rem 1.5rem; margin-bottom: 1rem; display: none; }
+  .info-title { font-size: 1rem; font-weight: 600; }
+  .info-sub { font-family: var(--mono); font-size: 0.72rem; color: var(--muted); margin-top: 0.2rem; }
+  .pill { font-family: var(--mono); font-size: 0.7rem; padding: 0.25rem 0.7rem; border-radius: 999px; background: var(--surface2); border: 1px solid var(--border); }
+  .pill.playlist { border-color: #1DB954; color: #1DB954; }
+  .pill.single { border-color: var(--accent2); color: var(--accent2); }
+  .track-list { display: flex; flex-direction: column; gap: 0.4rem; max-height: 420px; overflow-y: auto; }
+  .track-item { display: grid; grid-template-columns: 22px 44px 1fr auto auto; align-items: center; gap: 0.75rem; background: var(--surface2); border: 1px solid transparent; border-radius: 6px; padding: 0.6rem 0.85rem; cursor: pointer; }
+  .track-item.selected { border-color: rgba(29,185,84,0.35); background: rgba(29,185,84,0.04); }
+  .track-item.downloading { border-color: rgba(71,184,255,0.4); }
+  .track-item.done { border-color: rgba(71,255,184,0.35); }
+  .track-item.error { border-color: rgba(255,87,87,0.35); }
+  .track-thumb { width: 44px; height: 44px; border-radius: 4px; object-fit: cover; }
+  .track-thumb-placeholder { width: 44px; height: 44px; border-radius: 4px; background: var(--surface); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 1.1rem; color: #1DB954; }
+  .track-title { font-size: 0.83rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .track-uploader { font-size: 0.7rem; color: var(--muted); }
+  .track-dur { font-family: var(--mono); font-size: 0.72rem; color: var(--muted); }
+  .track-status { font-family: var(--mono); font-size: 0.68rem; min-width: 54px; text-align: right; }
+  .track-status.done { color: var(--ok); }
+  .track-status.err { color: var(--err); }
+  .track-progress-wrap { grid-column: 3/-1; height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; display: none; }
+  .track-item.downloading .track-progress-wrap,
+  .track-item.done .track-progress-wrap { display: block; }
+  .track-progress-bar { height: 100%; background: #1DB954; border-radius: 2px; width: 0%; transition: width 0.3s; }
+  .track-item.done .track-progress-bar { width: 100%; background: var(--ok); }
+  .dl-bar { display: none; align-items: center; justify-content: space-between; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border); flex-wrap: wrap; gap: 0.5rem; }
+  .save-lib { font-size: 0.8rem; color: var(--muted); }
+  .overall-progress { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.5rem; margin-bottom: 1rem; display: none; }
+  .op-bar-wrap { height: 6px; background: var(--surface2); border-radius: 3px; overflow: hidden; }
+  .op-bar { height: 100%; background: linear-gradient(90deg, #1DB954, var(--accent2)); border-radius: 3px; width: 0%; transition: width 0.4s; }
+  .op-status { margin-top: 0.5rem; font-size: 0.75rem; color: var(--muted); }
+  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: #1DB954; border-radius: 50%; animation: spin 0.7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .fetching-indicator { display: none; align-items: center; gap: 0.6rem; font-size: 0.78rem; color: var(--muted); margin-top: 0.75rem; }
+  .spotify-hint { font-size: 0.72rem; color: var(--muted); font-family: var(--mono); margin-top: 0.5rem; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="wrap">
+  <header>
+    <div class="logo">&#9654; Spotify<span>→</span>MP3</div>
+    <div class="tagline">Spotify Track · Album · Playlist Downloader</div>
+  </header>
+  <div class="input-card">
+    <label class="input-label" for="urlInput">Paste Spotify URL — track, album or playlist</label>
+    <div class="url-row">
+      <input id="urlInput" class="url-input" type="text"
+             placeholder="https://open.spotify.com/track/… or /album/… or /playlist/…" />
+      <button class="btn btn-primary" id="fetchBtn" onclick="fetchInfo()">Fetch</button>
+    </div>
+    <div class="fetching-indicator" id="fetchingIndicator"><span class="spinner"></span> Fetching Spotify metadata…</div>
+    <div class="spotify-hint">Downloads the best YouTube match for each track, tagged with Spotify metadata.</div>
+  </div>
+
+  <div class="error-banner" id="errorBanner"></div>
+
+  <div class="overall-progress" id="overallProgress">
+    <div style="display:flex;justify-content:space-between;margin-bottom:0.6rem;">
+      <span class="op-label" style="font-family:var(--mono);font-size:0.75rem;color:var(--muted);">Downloading</span>
+      <span id="opCount" style="font-family:var(--mono);font-size:0.75rem;color:#1DB954;">0 / 0</span>
+    </div>
+    <div class="op-bar-wrap"><div class="op-bar" id="opBar"></div></div>
+    <div class="op-status" id="opStatus">—</div>
+  </div>
+
+  <div class="info-card" id="infoCard">
+    <div style="margin-bottom:1rem;">
+      <div class="info-title" id="infoTitle">—</div>
+      <div class="info-sub" id="infoSub">—</div>
+    </div>
+    <div style="margin-bottom:1rem;"><span class="pill" id="typePill">—</span></div>
+    <div class="track-list" id="trackList"></div>
+    <div class="dl-bar" id="dlBar">
+      <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">
+        <label style="display:flex;align-items:center;gap:0.4rem;cursor:pointer">
+          <input type="checkbox" id="selectAll" onchange="toggleAll(this.checked)" style="accent-color:#1DB954" />
+          <span id="selectCount" style="font-family:var(--mono);font-size:0.75rem;color:var(--muted);">0 selected</span>
+        </label>
+        {% if current_user.is_authenticated %}
+        <label class="save-lib" style="display:flex;align-items:center;gap:0.4rem;cursor:pointer">
+          <input type="checkbox" id="saveToLibrary" style="accent-color:#1DB954" />
+          Save to my library
+        </label>
+        {% endif %}
+      </div>
+      <div style="display:flex;gap:0.5rem">
+        <button class="btn btn-ghost" onclick="clearResults()">Clear</button>
+        <button class="btn btn-dl" id="dlBtn" onclick="startDownload()" disabled>↓ Download MP3</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API_BASE = '/AudioWeb/spotify-download';
+let tracks = [], trackState = {}, currentPlaylistTitle = '', currentPlaylistThumbnail = '', currentType = 'single';
+
+function show(id)  { document.getElementById(id).style.display = 'flex'; }
+function showB(id) { document.getElementById(id).style.display = 'block'; }
+function hide(id)  { document.getElementById(id).style.display = 'none'; }
+function el(id)    { return document.getElementById(id); }
+function showError(msg) { el('errorBanner').textContent = '⚠ ' + msg; el('errorBanner').style.display = 'block'; }
+function clearError()   { el('errorBanner').style.display = 'none'; }
+function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+el('urlInput').addEventListener('keydown', e => { if (e.key === 'Enter') fetchInfo(); });
+
+const selected = new Set();
+function isSelected(url)   { return selected.has(url); }
+function toggleTrack(url)  { if (selected.has(url)) selected.delete(url); else selected.add(url); updateTrackUI(url); updateDlBar(); }
+function toggleAll(on)     { tracks.forEach(t => { if (on) selected.add(t.url); else selected.delete(t.url); }); renderTracks(); updateDlBar(); }
+
+function updateDlBar() {
+  el('dlBar').style.display = 'flex';
+  el('selectCount').textContent = selected.size + ' selected';
+  el('dlBtn').disabled = selected.size === 0;
+  el('selectAll').checked = tracks.length > 0 && tracks.every(t => selected.has(t.url));
+  el('selectAll').indeterminate = tracks.some(t => selected.has(t.url)) && !tracks.every(t => selected.has(t.url));
+}
+
+function updateTrackUI(url) {
+  const item = [...document.querySelectorAll('.track-item')].find(e => e.dataset.url === url);
+  if (item) { item.classList.toggle('selected', selected.has(url)); const cb = item.querySelector('.track-cb'); if (cb) cb.checked = selected.has(url); }
+  if (tracks.length > 0) { el('selectAll').checked = tracks.every(t => selected.has(t.url)); el('selectAll').indeterminate = tracks.some(t => selected.has(t.url)) && !tracks.every(t => selected.has(t.url)); }
+}
+
+async function fetchInfo() {
+  const url = el('urlInput').value.trim();
+  if (!url) return;
+  if ((/youtube\.com|youtu\.be|music\.youtube\.com/i).test(url)) {
+    el('errorBanner').innerHTML = '⚠ That looks like a YouTube link — use the <a href="/AudioWeb/yt-download/" style="color:var(--accent)">YT → MP3</a> downloader instead.';
+    el('errorBanner').style.display = 'block';
+    return;
+  }
+  clearError(); hide('infoCard');
+  el('fetchBtn').disabled = true; el('fetchingIndicator').style.display = 'flex';
+  try {
+    const res = await fetch(API_BASE + '/api/info', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url })
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) { showError(data.error || 'Failed to fetch info.'); return; }
+
+    tracks = data.tracks || []; trackState = {}; selected.clear();
+    tracks.forEach(t => { trackState[t.url] = 'idle'; selected.add(t.url); });
+    currentPlaylistTitle    = data.playlist_title || '';
+    currentPlaylistThumbnail = data.playlist_thumbnail || '';
+    currentType = data.type || 'single';
+
+    el('infoTitle').textContent = data.title || 'Unknown';
+    el('infoSub').textContent   = (data.uploader ? data.uploader + ' · ' : '') + data.count + ' track' + (data.count !== 1 ? 's' : '');
+
+    const pill = el('typePill');
+    if (data.type === 'playlist') { pill.textContent = '▤ Playlist / Album'; pill.className = 'pill playlist'; }
+    else                          { pill.textContent = '♪ Single';           pill.className = 'pill single'; }
+
+    renderTracks(); showB('infoCard'); updateDlBar();
+  } catch (err) { showError('Network error: ' + err.message); }
+  finally { el('fetchBtn').disabled = false; el('fetchingIndicator').style.display = 'none'; }
+}
+
+function renderTracks() {
+  const list = el('trackList'); list.innerHTML = '';
+  tracks.forEach(t => {
+    const state   = trackState[t.url] || 'idle';
+    const checked = isSelected(t.url);
+    const item    = document.createElement('div');
+    item.className = 'track-item' + (checked ? ' selected' : '');
+    if (state === 'downloading') item.classList.add('downloading');
+    if (state === 'done')        item.classList.add('done');
+    if (state === 'error')       item.classList.add('error');
+    item.dataset.url = t.url;
+    item.onclick = e => { if (e.target.type !== 'checkbox') toggleTrack(t.url); };
+
+    const thumb = t.thumbnail
+      ? '<img class="track-thumb" src="' + t.thumbnail + '" loading="lazy" onerror="this.style.display=\'none\'"/>'
+      : '<div class="track-thumb-placeholder">&#9654;</div>';
+
+    const statusMap = { idle: '', queued: '· queued', downloading: '⬇', converting: '⚙ mp3', done: '✓ done', error: '✗ error' };
+    const safeUrl   = t.url.replace(/'/g, "\\'");
+    const subtitle  = [t.uploader, t.album].filter(Boolean).join(' — ');
+
+    item.innerHTML =
+      '<input type="checkbox" class="track-cb" ' + (checked ? 'checked' : '') +
+        ' onclick="event.stopPropagation();toggleTrack(\'' + safeUrl + '\')"/>' +
+      thumb +
+      '<div>' +
+        '<div class="track-title" title="' + escHtml(t.title) + '">' + escHtml(t.title) + '</div>' +
+        (subtitle ? '<div class="track-uploader">' + escHtml(subtitle) + '</div>' : '') +
+      '</div>' +
+      '<div class="track-dur">' + (t.duration || '') + '</div>' +
+      '<div class="track-status ' + state + '" data-url="' + escHtml(t.url) + '">' + (statusMap[state] || '') + '</div>' +
+      '<div class="track-progress-wrap" data-url="' + escHtml(t.url) + '">' +
+        '<div class="track-progress-bar" style="width:' + (state === 'done' ? 100 : 0) + '%"></div>' +
+      '</div>';
+    list.appendChild(item);
+  });
+  el('selectAll').checked = tracks.length > 0 && tracks.every(t => selected.has(t.url));
+  el('selectAll').indeterminate = tracks.some(t => selected.has(t.url)) && !tracks.every(t => selected.has(t.url));
+}
+
+/* ── Mobile detection (same as yt_download) ── */
+const isIOS     = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const isAndroid = /Android/i.test(navigator.userAgent);
+const isMobile  = isIOS || isAndroid;
+const useZipForMultiple = !isMobile;
+
+function triggerDownload(url, filename) {
+  const a = document.createElement('a'); a.href = url; a.download = filename || 'download';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
+
+async function unpackAndDownload(zipUrl, zipFilename, onProgress) {
+  if (useZipForMultiple) { updateOverallStatus('⬇ Downloading zip…', 0, 1); window.location.href = zipUrl; return; }
+  try {
+    if (onProgress) onProgress(0, 1, 'Fetching…');
+    const resp = await fetch(zipUrl);
+    if (!resp.ok) throw new Error('Server error ' + resp.status);
+    const blob = await resp.blob();
+    if (onProgress) onProgress(0, 1, 'Unpacking…');
+    const zip = await JSZip.loadAsync(blob);
+    const entries = [];
+    zip.forEach((rp, file) => { if (!file.dir) entries.push({ relativePath: rp, file }); });
+    entries.sort((a, b) => {
+      const aM = a.relativePath.endsWith('.mp3'), bM = b.relativePath.endsWith('.mp3');
+      if (aM && !bM) return -1; if (!aM && bM) return 1;
+      return a.relativePath.localeCompare(b.relativePath);
+    });
+    const staggerMs = isMobile ? 600 : 400;
+    for (let i = 0; i < entries.length; i++) {
+      const { relativePath, file } = entries[i];
+      const filename = relativePath.split('/').pop();
+      if (onProgress) onProgress(i + 1, entries.length, filename);
+      const fileBlob = await file.async('blob');
+      const objUrl   = URL.createObjectURL(fileBlob);
+      triggerDownload(objUrl, filename);
+      setTimeout(() => URL.revokeObjectURL(objUrl), 5000);
+      if (i < entries.length - 1) await new Promise(r => setTimeout(r, staggerMs));
+    }
+  } catch (err) { showError('Failed to unpack files: ' + err.message); }
+}
+
+function updateTrackItemState(url, stateClass, statusText, pct) {
+  const item = [...document.querySelectorAll('.track-item')].find(e => e.dataset.url === url);
+  if (!item) return;
+  item.className = 'track-item' + (selected.has(url) ? ' selected' : '') + ' ' + stateClass;
+  const statusEl = item.querySelector('.track-status');
+  if (statusEl) { statusEl.className = 'track-status ' + stateClass; statusEl.textContent = statusText; }
+  const barEl = item.querySelector('.track-progress-bar');
+  if (barEl) barEl.style.width = pct + '%';
+}
+
+function showOverallProgress(done, total, label) {
+  showB('overallProgress');
+  const pct = total > 0 ? (done / total) * 100 : 0;
+  el('opBar').style.width = pct + '%';
+  el('opCount').textContent = done + ' / ' + total;
+  el('opStatus').textContent = label;
+}
+function updateOverallStatus(label, done, total) {
+  el('opStatus').textContent = label;
+  if (total > 0) { el('opBar').style.width = (done / total * 100) + '%'; el('opCount').textContent = done + ' / ' + total; }
+}
+function clearResults() {
+  tracks = []; trackState = {}; selected.clear();
+  currentPlaylistTitle = ''; currentPlaylistThumbnail = ''; currentType = 'single';
+  hide('infoCard'); hide('overallProgress'); el('urlInput').value = ''; clearError();
+}
+
+/* ── Session persistence (same pattern as yt_download) ── */
+const DL_SESSION_KEY = 'aw_sp_dl_session';
+function saveDlSession(sessionId, state) { try { sessionStorage.setItem(DL_SESSION_KEY, JSON.stringify(Object.assign({ sessionId }, state))); } catch(e) {} }
+function clearDlSession()               { try { sessionStorage.removeItem(DL_SESSION_KEY); } catch(e) {} }
+function loadDlSession()                { try { return JSON.parse(sessionStorage.getItem(DL_SESSION_KEY) || 'null'); } catch(e) { return null; } }
+
+async function startDownload() {
+  const urls = [...selected];
+  if (!urls.length) return;
+  el('dlBtn').disabled = true; clearError();
+  urls.forEach(url => { trackState[url] = 'queued'; });
+  renderTracks();
+
+  const titlesMap = {};
+  tracks.forEach(t => { titlesMap[t.url] = t.title; });
+
+  const trackMeta = {};
+  tracks.forEach(t => {
+    if (selected.has(t.url)) {
+      trackMeta[t.url] = {
+        artist:       t.uploader   || '',
+        duration_sec: t.duration_sec || null,
+        thumbnail:    t.thumbnail   || '',
+        album:        t.album       || '',
+      };
+    }
+  });
+
+  const multiSelect           = urls.length > 1;
+  const effectivePlaylistTitle     = (multiSelect && currentPlaylistTitle) ? currentPlaylistTitle :
+                                     (multiSelect && currentType !== 'playlist') ? 'Selected' : '';
+  const effectivePlaylistThumbnail = effectivePlaylistTitle ? currentPlaylistThumbnail : '';
+
+  const sessionId   = crypto.randomUUID();
+  const totalCount  = urls.length;
+  showOverallProgress(0, totalCount, '—');
+  const saveToLibrary = el('saveToLibrary') && el('saveToLibrary').checked;
+
+  saveDlSession(sessionId, {
+    trackState: Object.fromEntries(urls.map(u => [u, 'queued'])),
+    titlesMap, trackMeta, urls, doneCount: 0, totalCount,
+    effectivePlaylistTitle, isMulti: multiSelect,
+  });
+
+  try {
+    const res = await fetch(API_BASE + '/api/download', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        urls, titles: titlesMap, track_meta: trackMeta,
+        session_id: sessionId,
+        playlist_title: effectivePlaylistTitle,
+        playlist_thumbnail: effectivePlaylistThumbnail,
+        save_to_library: !!saveToLibrary,
+      })
+    });
+    if (!res.ok) { const d = await res.json(); showError(d.error || 'Failed to start download.'); el('dlBtn').disabled = false; clearDlSession(); return; }
+  } catch (err) { showError('Network error: ' + err.message); el('dlBtn').disabled = false; clearDlSession(); return; }
+
+  listenSSE(sessionId, totalCount);
+}
+
+function listenSSE(sessionId, totalCount) {
+  let doneCount = 0;
+  const sse = new EventSource(API_BASE + '/api/progress/' + sessionId);
+  sse.onmessage = e => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === 'keepalive') return;
+    if (msg.type === 'started')    { trackState[msg.url] = 'downloading'; updateTrackItemState(msg.url, 'downloading', '⬇', 0); updateOverallStatus(msg.title || msg.url, doneCount, totalCount); }
+    if (msg.type === 'progress')   { trackState[msg.url] = 'downloading'; updateTrackItemState(msg.url, 'downloading', '⬇ ' + (msg.percent || 0) + '%', msg.percent || 0); updateOverallStatus((msg.title || msg.url) + (msg.speed ? ' · ' + msg.speed : ''), doneCount, totalCount); }
+    if (msg.type === 'converting') { trackState[msg.url] = 'converting';  updateTrackItemState(msg.url, 'converting', '⚙ mp3', 99); }
+    if (msg.type === 'track_done') {
+      doneCount++; trackState[msg.url] = 'done'; updateTrackItemState(msg.url, 'done', '✓ done', 100);
+      showOverallProgress(doneCount, totalCount, msg.title || msg.url);
+      saveDlSession(sessionId, { doneCount, totalCount, trackState: { ...trackState } });
+      if (msg.filename && msg.session_id) triggerDownload(API_BASE + '/api/serve/' + encodeURIComponent(msg.session_id) + '/' + encodeURIComponent(msg.filename), msg.filename);
+    }
+    if (msg.type === 'zipping')   updateOverallStatus('⚙ Zipping…', doneCount, totalCount);
+    if (msg.type === 'zip_ready') { unpackAndDownload(API_BASE + '/api/serve-zip/' + encodeURIComponent(msg.session_id), msg.filename, (d, t, n) => updateOverallStatus(n ? ('⬇ Saving ' + n + ' (' + d + '/' + t + ')…') : '⬇ Unpacking…', d, t)); }
+    if (msg.type === 'track_error') { doneCount++; trackState[msg.url] = 'error'; updateTrackItemState(msg.url, 'error', '✗ err', 0); showOverallProgress(doneCount, totalCount, '⚠ Error: ' + (msg.title || msg.url)); }
+    if (msg.type === 'all_done') { sse.close(); el('dlBtn').disabled = false; updateOverallStatus('All done ✓', totalCount, totalCount); clearDlSession(); }
+    if (msg.type === 'error')    { sse.close(); showError(msg.message || 'Stream error'); el('dlBtn').disabled = false; clearDlSession(); }
+  };
+  sse.onerror = () => { sse.close(); el('dlBtn').disabled = false; };
+}
+
+/* ── Restore active download on page load ── */
+(async function tryRestoreDownload() {
+  const saved = loadDlSession();
+  if (!saved || !saved.sessionId) return;
+  try {
+    const r = await fetch(API_BASE + '/api/session-status/' + saved.sessionId);
+    const d = await r.json();
+    if (!d.exists) { clearDlSession(); return; }
+    showB('overallProgress');
+    el('dlBtn').disabled = true;
+    const { sessionId, totalCount = 0, doneCount = 0, trackState: savedState = {} } = saved;
+    showOverallProgress(doneCount, totalCount, 'Reconnecting…');
+    Object.assign(trackState, savedState);
+    if (d.zip_ready) {
+      updateOverallStatus('⬇ Download ready', totalCount, totalCount);
+      const zipUrl = API_BASE + '/api/serve-zip/' + encodeURIComponent(sessionId);
+      unpackAndDownload(zipUrl, d.zip_name || 'playlist.zip', (dd, tt, n) => updateOverallStatus(n ? ('⬇ ' + n) : '⬇ Saving…', dd, tt));
+      clearDlSession(); el('dlBtn').disabled = false; return;
+    }
+    listenSSE(sessionId, totalCount);
+  } catch(e) { clearDlSession(); }
+})();
+</script>
+{% endblock %}

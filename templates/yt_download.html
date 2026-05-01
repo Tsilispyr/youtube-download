@@ -133,6 +133,12 @@ function updateTrackUI(url){
 async function fetchInfo(){
   const url=el('urlInput').value.trim();
   if(!url)return;
+  if(/open\.spotify\.com\/(track|album|playlist)\//i.test(url)){
+    clearError();
+    el('errorBanner').innerHTML='⚠ That looks like a Spotify link — use the <a href="/AudioWeb/spotify-download/" style="color:var(--accent)">Spotify → MP3</a> downloader instead.';
+    el('errorBanner').style.display='block';
+    return;
+  }
   clearError(); hide('infoCard');
   el('fetchBtn').disabled=true; el('fetchingIndicator').style.display='flex';
   try{
@@ -219,6 +225,18 @@ function updateTrackItemState(url,stateClass,statusText,pct){
 function showOverallProgress(done,total,label){ showB('overallProgress'); const pct=total>0?(done/total)*100:0; el('opBar').style.width=pct+'%'; el('opCount').textContent=done+' / '+total; el('opStatus').textContent=label; }
 function updateOverallStatus(label,done,total){ el('opStatus').textContent=label; if(total>0){ el('opBar').style.width=(done/total*100)+'%'; el('opCount').textContent=done+' / '+total; } }
 function clearResults(){ tracks=[]; trackState={}; selected.clear(); currentPlaylistTitle=''; currentPlaylistThumbnail=''; currentType='single'; hide('infoCard'); hide('overallProgress'); el('urlInput').value=''; clearError(); }
+const DL_SESSION_KEY = 'aw_dl_session';
+
+function saveDlSession(sessionId, state) {
+  try { sessionStorage.setItem(DL_SESSION_KEY, JSON.stringify(Object.assign({ sessionId }, state))); } catch(e) {}
+}
+function clearDlSession() {
+  try { sessionStorage.removeItem(DL_SESSION_KEY); } catch(e) {}
+}
+function loadDlSession() {
+  try { return JSON.parse(sessionStorage.getItem(DL_SESSION_KEY)||'null'); } catch(e) { return null; }
+}
+
 async function startDownload(){
   const urls=[...selected];
   if(!urls.length)return;
@@ -227,34 +245,87 @@ async function startDownload(){
   renderTracks();
   const titlesMap={}; tracks.forEach(t=>{ titlesMap[t.url]=t.title; });
   const trackMeta={}; tracks.forEach(t=>{ if(selected.has(t.url)) trackMeta[t.url]={ artist: t.uploader||'', duration_sec: t.duration_sec||null, thumbnail: t.thumbnail||'' }; });
-  const allSelected=tracks.length>0&&tracks.every(t=>selected.has(t.url));
-  const effectivePlaylistTitle=(currentType==='playlist'&&allSelected)?currentPlaylistTitle:'';
-  const effectivePlaylistThumbnail=effectivePlaylistTitle?currentPlaylistThumbnail:'';
+
+  // Multi-select → zip with playlist folder name; single → individual file
+  const multiSelect = urls.length > 1;
+  const effectivePlaylistTitle = (multiSelect && currentPlaylistTitle) ? currentPlaylistTitle :
+                                 (multiSelect && currentType!=='playlist') ? 'Selected' : '';
+  const effectivePlaylistThumbnail = effectivePlaylistTitle ? currentPlaylistThumbnail : '';
+
   const sessionId=crypto.randomUUID();
   let doneCount=0, totalCount=urls.length;
   showOverallProgress(doneCount,totalCount,'—');
   const saveToLibrary=el('saveToLibrary')&&el('saveToLibrary').checked;
+
+  // Persist session so download survives navigation
+  saveDlSession(sessionId, {
+    trackState: Object.fromEntries(urls.map(u=>[u,'queued'])),
+    titlesMap, trackMeta, urls, doneCount: 0, totalCount,
+    effectivePlaylistTitle, isMulti: multiSelect,
+  });
+
   try{
     const res=await fetch(API_BASE+'/api/download',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({urls,titles:titlesMap,track_meta:trackMeta,session_id:sessionId,playlist_title:effectivePlaylistTitle,playlist_thumbnail:effectivePlaylistThumbnail,save_to_library:!!saveToLibrary})});
-    if(!res.ok){ const d=await res.json(); showError(d.error||'Failed to start download.'); el('dlBtn').disabled=false; return; }
-  }catch(err){ showError('Network error: '+err.message); el('dlBtn').disabled=false; return; }
+    if(!res.ok){ const d=await res.json(); showError(d.error||'Failed to start download.'); el('dlBtn').disabled=false; clearDlSession(); return; }
+  }catch(err){ showError('Network error: '+err.message); el('dlBtn').disabled=false; clearDlSession(); return; }
+
+  listenSSE(sessionId, totalCount);
+}
+
+function listenSSE(sessionId, totalCount) {
+  let doneCount = 0;
   const sse=new EventSource(API_BASE+'/api/progress/'+sessionId);
   sse.onmessage=e=>{
     const msg=JSON.parse(e.data);
-    if(msg.type==='keepalive')return;
+    if(msg.type==='keepalive') return;
     if(msg.type==='started'){ trackState[msg.url]='downloading'; updateTrackItemState(msg.url,'downloading','⬇',0); updateOverallStatus(msg.title||msg.url,doneCount,totalCount); }
     if(msg.type==='progress'){ trackState[msg.url]='downloading'; updateTrackItemState(msg.url,'downloading','⬇ '+(msg.percent||0)+'%',msg.percent||0); updateOverallStatus((msg.title||msg.url)+(msg.speed?' · '+msg.speed:''),doneCount,totalCount); }
     if(msg.type==='converting'){ trackState[msg.url]='converting'; updateTrackItemState(msg.url,'converting','⚙ mp3',99); }
-    if(msg.type==='track_done'){ doneCount++; trackState[msg.url]='done'; updateTrackItemState(msg.url,'done','✓ done',100); showOverallProgress(doneCount,totalCount,msg.title||msg.url);
+    if(msg.type==='track_done'){
+      doneCount++; trackState[msg.url]='done'; updateTrackItemState(msg.url,'done','✓ done',100);
+      showOverallProgress(doneCount,totalCount,msg.title||msg.url);
+      saveDlSession(sessionId, { doneCount, totalCount, trackState: {...trackState} });
       if(msg.filename&&msg.session_id) triggerDownload(API_BASE+'/api/serve/'+encodeURIComponent(msg.session_id)+'/'+encodeURIComponent(msg.filename),msg.filename);
     }
-    if(msg.type==='zipping') updateOverallStatus('⚙ Zipping playlist…',doneCount,totalCount);
+    if(msg.type==='zipping') updateOverallStatus('⚙ Zipping…',doneCount,totalCount);
     if(msg.type==='zip_ready'){ unpackAndDownload(API_BASE+'/api/serve-zip/'+encodeURIComponent(msg.session_id),msg.filename,(d,t,n)=>updateOverallStatus(n?('⬇ Saving '+n+' ('+d+'/'+t+')…'):'⬇ Unpacking…',d,t)); }
     if(msg.type==='track_error'){ doneCount++; trackState[msg.url]='error'; updateTrackItemState(msg.url,'error','✗ err',0); showOverallProgress(doneCount,totalCount,'⚠ Error: '+(msg.title||msg.url)); }
-    if(msg.type==='all_done'){ sse.close(); el('dlBtn').disabled=false; updateOverallStatus('All done ✓',totalCount,totalCount); }
-    if(msg.type==='error'){ sse.close(); showError(msg.message||'Stream error'); el('dlBtn').disabled=false; }
+    if(msg.type==='all_done'){
+      sse.close(); el('dlBtn').disabled=false;
+      updateOverallStatus('All done ✓',totalCount,totalCount);
+      clearDlSession();
+    }
+    if(msg.type==='error'){ sse.close(); showError(msg.message||'Stream error'); el('dlBtn').disabled=false; clearDlSession(); }
   };
   sse.onerror=()=>{ sse.close(); el('dlBtn').disabled=false; };
 }
+
+// ── Restore active download on page load ─────────────────────────────────────
+(async function tryRestoreDownload() {
+  const saved = loadDlSession();
+  if (!saved || !saved.sessionId) return;
+  try {
+    const r = await fetch(API_BASE+'/api/session-status/'+saved.sessionId);
+    const d = await r.json();
+    if (!d.exists) { clearDlSession(); return; }
+
+    // Session still alive on server — restore UI
+    showB('overallProgress');
+    el('dlBtn').disabled = true;
+    const { sessionId, totalCount=0, doneCount=0, trackState: savedState={} } = saved;
+    showOverallProgress(doneCount, totalCount, 'Reconnecting…');
+    // Restore track states in UI if track list visible
+    Object.assign(trackState, savedState);
+    if (d.zip_ready) {
+      // Zip already ready — offer direct download
+      updateOverallStatus('⬇ Download ready', totalCount, totalCount);
+      const zipUrl = API_BASE+'/api/serve-zip/'+encodeURIComponent(sessionId);
+      unpackAndDownload(zipUrl, d.zip_name||'playlist.zip', (dd,tt,n)=>updateOverallStatus(n?('⬇ '+n):('⬇ Saving…'),dd,tt));
+      clearDlSession(); el('dlBtn').disabled=false; return;
+    }
+    // Reconnect SSE to catch remaining events
+    listenSSE(sessionId, totalCount);
+  } catch(e) { clearDlSession(); }
+})();
 </script>
 {% endblock %}

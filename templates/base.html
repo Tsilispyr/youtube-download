@@ -14,28 +14,363 @@
       --border: #2a2a33; --accent: #e8ff47; --accent2: #47b8ff;
       --err: #ff5757; --ok: #47ffb8; --text: #e8e8f0; --muted: #5a5a6e;
       --mono: 'Space Mono', monospace; --sans: 'DM Sans', sans-serif;
+      --mini-h: 60px;
     }
-    body { background: var(--bg); color: var(--text); font-family: var(--sans); min-height: 100vh; }
-    .nav { padding: 0.75rem 1.5rem; border-bottom: 1px solid var(--border); display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
-    .nav a { color: var(--muted); text-decoration: none; font-family: var(--mono); font-size: 0.8rem; }
+    body { background: var(--bg); color: var(--text); font-family: var(--sans); min-height: 100vh; padding-bottom: 0; }
+    body.has-mini-player { padding-bottom: var(--mini-h); }
+
+    /* ── Nav ── */
+    .nav { padding: 0.6rem 1.5rem; border-bottom: 1px solid var(--border); display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; }
+    .nav a { color: var(--muted); text-decoration: none; font-family: var(--mono); font-size: 0.78rem; padding: 0.25rem 0.4rem; border-radius: 3px; transition: color 0.15s; }
     .nav a:hover { color: var(--accent); }
-    .nav .user { margin-left: auto; color: var(--muted); font-size: 0.8rem; }
+    .nav .sep { color: var(--border); font-size: 0.7rem; }
+    .nav .user-info { margin-left: auto; display: flex; align-items: center; gap: 0.75rem; }
+    .nav .user-email { color: var(--muted); font-size: 0.72rem; font-family: var(--mono); }
+    .nav .admin-link { color: var(--accent2) !important; }
+
+    /* ── Flash messages ── */
+    .flash-zone { padding: 0.6rem 1.5rem; }
+    .flash { padding: 0.55rem 1rem; margin-bottom: 0.35rem; border-radius: 4px; font-size: 0.83rem; border-left: 3px solid var(--muted); background: var(--surface); }
+    .flash.error   { border-left-color: var(--err); }
+    .flash.info    { border-left-color: var(--accent2); }
+    .flash.success { border-left-color: var(--ok); }
+
+    /* ── Mini-player bar ── */
+    #aw-mini {
+      display: none; position: fixed; bottom: 0; left: 0; right: 0;
+      height: var(--mini-h); background: var(--surface);
+      border-top: 1px solid var(--border); z-index: 999;
+      align-items: center; gap: 0.75rem; padding: 0 1rem;
+    }
+    #aw-mini.visible { display: flex; }
+    .mp-info { display: flex; flex-direction: column; min-width: 0; width: 190px; flex-shrink: 0; }
+    .mp-title { font-size: 0.8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+    .mp-artist { font-size: 0.68rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: var(--mono); }
+    .mp-resume-hint { font-size: 0.6rem; color: var(--accent); font-family: var(--mono); animation: hint-pulse 2s ease-in-out infinite; }
+    @keyframes hint-pulse { 0%,100%{opacity:.5} 50%{opacity:1} }
+    .mp-controls { display: flex; align-items: center; gap: 0.4rem; flex-shrink: 0; }
+    .mp-btn { width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--border); background: var(--surface2); color: var(--text); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 0.72rem; transition: all 0.12s; flex-shrink: 0; }
+    .mp-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .mp-btn.active { background: var(--accent); color: #0c0c0e; border-color: var(--accent); }
+    .mp-timeline { display: flex; align-items: center; gap: 0.4rem; flex: 1; min-width: 80px; }
+    .mp-timeline input[type="range"] { flex: 1; accent-color: var(--accent); height: 3px; cursor: pointer; }
+    .mp-time { font-family: var(--mono); font-size: 0.6rem; color: var(--muted); white-space: nowrap; }
+    .mp-vol { display: flex; align-items: center; gap: 0.3rem; flex-shrink: 0; }
+    .mp-vol input[type="range"] { width: 60px; accent-color: var(--accent2); }
+    .mp-vol-icon { font-size: 0.72rem; color: var(--muted); }
+    .mp-goto { font-family: var(--mono); font-size: 0.63rem; color: var(--accent2); text-decoration: none; padding: 0.22rem 0.5rem; border: 1px solid rgba(71,184,255,0.3); border-radius: 3px; flex-shrink: 0; transition: all 0.12s; white-space: nowrap; }
+    .mp-goto:hover { background: var(--accent2); color: #0c0c0e; border-color: var(--accent2); }
+    .mp-eq-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: eq-pulse 1.2s ease-in-out infinite; flex-shrink: 0; display: none; }
+    @keyframes eq-pulse { 0%,100%{opacity:.4;transform:scale(.8)} 50%{opacity:1;transform:scale(1.1)} }
+    @media(max-width:600px) { .mp-vol,.mp-goto { display:none; } .mp-info { width:120px; } }
   </style>
   {% block head %}{% endblock %}
 </head>
 <body>
   <nav class="nav">
-    <a href="/AudioWeb/yt-download/">Download</a>
-    <a href="/AudioWeb/equalizer/">Equalizer</a>
-    <a href="/AudioWorld/Player/">Player</a>
+    <a href="/AudioWeb/yt-download/">⬇ Download</a>
+    <span class="sep">|</span>
+    <a href="/AudioWeb/equalizer/">≋ Equalizer</a>
+    <span class="sep">|</span>
+    <a href="/AudioWorld/Player/">▶ Player</a>
     {% if current_user.is_authenticated %}
-      <span class="user">{{ current_user.email }}</span>
-      <a href="/AudioWeb/logout">Logout</a>
+      {% if current_user.is_admin %}
+        <span class="sep">|</span>
+        <a href="/AudioWeb/admin/" class="admin-link">⚙ Admin</a>
+      {% endif %}
+      <div class="user-info">
+        <span class="user-email">{{ current_user.email }}</span>
+        <a href="/AudioWeb/logout">Logout</a>
+      </div>
     {% else %}
-      <a href="/AudioWeb/login">Login</a>
-      <a href="/AudioWeb/register">Register</a>
+      <div class="user-info">
+        <a href="/AudioWeb/login">Login</a>
+        <a href="/AudioWeb/register">Register</a>
+      </div>
     {% endif %}
   </nav>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="flash-zone">
+        {% for cat, msg in messages %}
+          <div class="flash {{ cat }}">{{ msg }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
   {% block content %}{% endblock %}
+
+  <!-- ── Persistent mini-player (hidden on Player & Equalizer full pages) ── -->
+  <div id="aw-mini" role="region" aria-label="Mini player">
+    <div class="mp-eq-dot" id="mpEqDot"></div>
+    <div class="mp-info">
+      <span class="mp-title" id="mpTitle">—</span>
+      <span class="mp-artist" id="mpArtist"></span>
+      <span class="mp-resume-hint" id="mpResumeHint" style="display:none">▶ click to resume</span>
+    </div>
+    <div class="mp-controls">
+      <button class="mp-btn" id="mpPrev" title="Previous">⏮</button>
+      <button class="mp-btn" id="mpPlay" title="Play/Pause">▶</button>
+      <button class="mp-btn" id="mpNext" title="Next">⏭</button>
+    </div>
+    <div class="mp-timeline">
+      <span class="mp-time" id="mpTime">0:00</span>
+      <input type="range" id="mpSeek" min="0" max="100" value="0" />
+    </div>
+    <div class="mp-vol">
+      <span class="mp-vol-icon">🔊</span>
+      <input type="range" id="mpVol" min="0" max="100" value="100" title="Volume" />
+    </div>
+    <a id="mpGoto" href="/AudioWorld/Player/" class="mp-goto">Open Player ↗</a>
+  </div>
+  <audio id="aw-mini-audio" style="display:none"></audio>
+
+  <script>
+  /* ═══════════════════════════════════════════════════════════════════
+     AWSession — shared playback state via sessionStorage.
+     Written by Player/Equalizer pages; read by all pages for mini-player.
+     ═══════════════════════════════════════════════════════════════════ */
+  window.AWSession = (function() {
+    const KEY = 'aw_pb_v3';
+    const defaults = {
+      mode: null,           // 'player' | 'equalizer'
+      streamUrl: null,      // /AudioWorld/Player/api/stream/{id}
+      trackId: null,
+      trackTitle: '',
+      trackArtist: '',
+      trackPos: 0,
+      isPlaying: false,
+      duration: 0,
+      masterVol: 100,
+      queue: [],            // [{id,title,artist}] for player mode
+      queueIdx: 0,
+      eqGains: [0,0,0,0,0,0,0,0,0,0],
+      eqQueueNames: [],     // display-only names for equalizer queue
+      eqQueueIdx: 0,
+    };
+    return {
+      get()    { try { return Object.assign({}, defaults, JSON.parse(sessionStorage.getItem(KEY)||'null')||{}); } catch { return Object.assign({}, defaults); } },
+      set(d)   { try { sessionStorage.setItem(KEY, JSON.stringify(d)); } catch {} },
+      update(p){ this.set(Object.assign(this.get(), p)); },
+      clear()  { sessionStorage.removeItem(KEY); },
+      hasActiveTrack() { const s=this.get(); return !!(s.trackTitle && (s.streamUrl || s.mode==='equalizer')); },
+    };
+  })();
+
+  /* ═══════════════════════════════════════════════════════════════════
+     Mini-player — shown on all pages EXCEPT Player & Equalizer
+     ═══════════════════════════════════════════════════════════════════ */
+  (function() {
+    const PATH = location.pathname;
+    const IS_FULL = PATH.startsWith('/AudioWorld/Player') || PATH.startsWith('/AudioWeb/equalizer');
+
+    if (IS_FULL) {
+      window._awMiniSuppressed = true;
+      return;
+    }
+
+    const mini     = document.getElementById('aw-mini');
+    const miniAu   = document.getElementById('aw-mini-audio');
+    const mpPlay   = document.getElementById('mpPlay');
+    const mpPrev   = document.getElementById('mpPrev');
+    const mpNext   = document.getElementById('mpNext');
+    const mpSeek   = document.getElementById('mpSeek');
+    const mpTime   = document.getElementById('mpTime');
+    const mpVol    = document.getElementById('mpVol');
+    const mpTitle  = document.getElementById('mpTitle');
+    const mpArtist = document.getElementById('mpArtist');
+    const mpGoto   = document.getElementById('mpGoto');
+    const mpDot    = document.getElementById('mpEqDot');
+    const mpHint   = document.getElementById('mpResumeHint');
+
+    let audioCtx = null, sourceNode = null, gainNode = null, eqNodes = [];
+    let graphBuilt = false;
+    const FREQS = [32,64,125,250,500,1000,2000,4000,8000,16000];
+
+    function fmtTime(s) {
+      if (!s || isNaN(s)) return '0:00';
+      const m = Math.floor(s/60);
+      return m + ':' + (Math.floor(s%60)<10?'0':'') + Math.floor(s%60);
+    }
+
+    function ensureCtx() {
+      if (!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+    }
+
+    function buildGraph(eqGains, vol) {
+      ensureCtx();
+      gainNode = audioCtx.createGain();
+      gainNode.gain.value = (vol||100)/100;
+      let prev = gainNode;
+      eqNodes = [];
+      FREQS.forEach((f,i) => {
+        const filt = audioCtx.createBiquadFilter();
+        filt.type = 'peaking'; filt.frequency.value = f; filt.Q.value = 1.2;
+        filt.gain.value = (eqGains||[])[i]||0;
+        prev.connect(filt); prev = filt; eqNodes.push(filt);
+      });
+      prev.connect(audioCtx.destination);
+      graphBuilt = true;
+    }
+
+    function connectElement() {
+      if (sourceNode) { try { sourceNode.disconnect(); } catch(e){} }
+      sourceNode = audioCtx.createMediaElementSource(miniAu);
+      sourceNode.connect(gainNode);
+    }
+
+    function showMini(session) {
+      mpTitle.textContent  = session.trackTitle || '—';
+      mpArtist.textContent = session.trackArtist || '';
+      mpVol.value = session.masterVol || 100;
+      if (session.mode === 'equalizer') {
+        mpGoto.href = '/AudioWeb/equalizer/';
+        mpGoto.textContent = 'Open Equalizer ↗';
+        mpDot.style.display = 'none';
+      } else {
+        mpGoto.href = '/AudioWorld/Player/';
+        mpGoto.textContent = 'Open Player ↗';
+        mpDot.style.display = '';
+      }
+      mini.classList.add('visible');
+      document.body.classList.add('has-mini-player');
+    }
+
+    function hideMini() {
+      mini.classList.remove('visible');
+      document.body.classList.remove('has-mini-player');
+    }
+
+    function syncPlayBtn() {
+      const playing = !miniAu.paused && miniAu.src;
+      mpPlay.textContent = playing ? '❚❚' : '▶';
+      mpPlay.classList.toggle('active', playing);
+      mpHint.style.display = (!playing && miniAu.src) ? '' : 'none';
+    }
+
+    function loadAndPlay(session, autoPlay) {
+      if (!session.streamUrl) {
+        // Equalizer mode — local file, just display info
+        showMini(session);
+        return;
+      }
+      if (!graphBuilt) buildGraph(session.eqGains, session.masterVol);
+
+      const newSrc = session.streamUrl + '?t=' + Date.now();
+      miniAu.src = newSrc;
+      miniAu.load();
+
+      miniAu.addEventListener('loadedmetadata', function onMeta() {
+        miniAu.removeEventListener('loadedmetadata', onMeta);
+        if (session.trackPos > 0 && isFinite(miniAu.duration)) {
+          miniAu.currentTime = Math.min(session.trackPos, miniAu.duration - 1);
+        }
+        if (autoPlay) {
+          ensureCtx();
+          audioCtx.resume().then(() => {
+            if (!sourceNode) connectElement();
+            miniAu.play()
+              .then(() => { mpHint.style.display='none'; })
+              .catch(() => {
+                // Autoplay blocked — show hint so user knows to click play
+                mpHint.style.display = '';
+              });
+          });
+        }
+      }, {once: true});
+
+      showMini(session);
+    }
+
+    function playQueueTrack(idx) {
+      const s = AWSession.get();
+      if (!s.queue || !s.queue[idx]) return;
+      const track = s.queue[idx];
+      // Use stored streamUrl (supports both personal and vault) with fallback
+      const streamUrl = track.streamUrl || ('/AudioWorld/Player/api/stream/' + track.id);
+      AWSession.update({ queueIdx: idx, trackId: track.id, trackTitle: track.title, trackArtist: track.artist||'', trackPos: 0, streamUrl, isPlaying: true });
+      mpTitle.textContent  = track.title;
+      mpArtist.textContent = track.artist || '';
+      if (!graphBuilt) buildGraph(AWSession.get().eqGains, AWSession.get().masterVol);
+      miniAu.src = streamUrl + '?t=' + Date.now();
+      miniAu.load();
+      miniAu.addEventListener('canplay', function cp() {
+        miniAu.removeEventListener('canplay', cp);
+        ensureCtx();
+        audioCtx.resume().then(() => {
+          if (!sourceNode) connectElement();
+          miniAu.play().catch(()=>{});
+        });
+      }, {once: true});
+    }
+
+    // ── Controls ───────────────────────────────────────────────────
+    mpPlay.addEventListener('click', () => {
+      if (!miniAu.src) return;
+      ensureCtx();
+      audioCtx.resume().then(() => {
+        if (miniAu.paused) {
+          if (!graphBuilt) buildGraph(AWSession.get().eqGains, AWSession.get().masterVol);
+          if (!sourceNode) connectElement();
+          miniAu.play().catch(()=>{});
+        } else {
+          miniAu.pause();
+        }
+        AWSession.update({ isPlaying: !miniAu.paused, trackPos: miniAu.currentTime });
+        syncPlayBtn();
+      });
+    });
+
+    mpPrev.addEventListener('click', () => {
+      const s = AWSession.get();
+      if (s.mode !== 'player' || !s.queue || !s.queue.length) return;
+      playQueueTrack(Math.max(0, (s.queueIdx||0) - 1));
+    });
+
+    mpNext.addEventListener('click', () => {
+      const s = AWSession.get();
+      if (s.mode !== 'player' || !s.queue || !s.queue.length) return;
+      playQueueTrack(Math.min(s.queue.length - 1, (s.queueIdx||0) + 1));
+    });
+
+    mpSeek.addEventListener('input', () => {
+      if (miniAu.duration) {
+        miniAu.currentTime = (mpSeek.value/100) * miniAu.duration;
+        AWSession.update({ trackPos: miniAu.currentTime });
+      }
+    });
+
+    mpVol.addEventListener('input', () => {
+      const v = parseInt(mpVol.value);
+      if (gainNode) gainNode.gain.value = v/100;
+      AWSession.update({ masterVol: v });
+    });
+
+    miniAu.addEventListener('timeupdate', () => {
+      if (miniAu.duration) mpSeek.value = (miniAu.currentTime/miniAu.duration)*100;
+      mpTime.textContent = fmtTime(miniAu.currentTime) + ' / ' + fmtTime(miniAu.duration);
+      AWSession.update({ trackPos: miniAu.currentTime, isPlaying: !miniAu.paused });
+    });
+
+    miniAu.addEventListener('play',  syncPlayBtn);
+    miniAu.addEventListener('pause', syncPlayBtn);
+
+    miniAu.addEventListener('ended', () => {
+      const s = AWSession.get();
+      if (s.mode !== 'player' || !s.queue || !s.queue.length) return;
+      const nextIdx = (s.queueIdx||0) + 1;
+      if (nextIdx >= s.queue.length) { syncPlayBtn(); return; }
+      playQueueTrack(nextIdx);
+    });
+
+    // ── Auto-restore on page load ──────────────────────────────────
+    if (AWSession.hasActiveTrack()) {
+      const s = AWSession.get();
+      loadAndPlay(s, s.isPlaying !== false);
+    }
+  })();
+  </script>
 </body>
 </html>
