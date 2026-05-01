@@ -76,6 +76,8 @@ def _save_to_minio_and_db(app, user_id: int, bucket: str, local_path: str, objec
                           title: str, artist: str = "", duration_sec: int = None, playlist_name: str = None,
                           source_url: str = "", thumbnail_local_path: str = None):
     """Save to MinIO and insert Song record. Uploads MP3 + thumbnail. Called from download thread."""
+    import logging
+    log = logging.getLogger(__name__)
     from services import MinIOService
     from models import Song
     from extensions import db
@@ -86,8 +88,20 @@ def _save_to_minio_and_db(app, user_id: int, bucket: str, local_path: str, objec
             app.config["MINIO_SECRET_KEY"],
             app.config["MINIO_SECURE"],
         )
-        if not minio.put_file(bucket, object_name, local_path):
+        # Ensure bucket exists
+        minio.ensure_user_bucket(bucket)
+
+        if not os.path.isfile(local_path):
+            log.error(f"MinIO upload: local file not found: {local_path}")
             return False
+
+        file_size = os.path.getsize(local_path)
+        ok = minio.put_file(bucket, object_name, local_path)
+        if not ok:
+            log.error(f"MinIO upload failed: bucket={bucket} object={object_name} path={local_path}")
+            return False
+
+        log.info(f"MinIO upload OK: {bucket}/{object_name} ({file_size} bytes)")
 
         thumb_obj = None
         if thumbnail_local_path and os.path.isfile(thumbnail_local_path):
@@ -96,6 +110,12 @@ def _save_to_minio_and_db(app, user_id: int, bucket: str, local_path: str, objec
                 "png" if thumbnail_local_path.lower().endswith(".png") else "webp")
             thumb_obj = f"{base}.{thumb_ext}"
             minio.put_file(bucket, thumb_obj, thumbnail_local_path)
+
+        # Avoid duplicate DB entries
+        existing = Song.query.filter_by(user_id=user_id, object_name=object_name).first()
+        if existing:
+            log.info(f"Song already in DB: {object_name}")
+            return True
 
         song = Song(
             user_id=user_id,
@@ -107,11 +127,72 @@ def _save_to_minio_and_db(app, user_id: int, bucket: str, local_path: str, objec
             thumbnail_path=thumb_obj,
             playlist_name=playlist_name,
             source_url=source_url or None,
+            file_size=file_size,
         )
         db.session.add(song)
         db.session.commit()
+        log.info(f"Song saved to DB: id={song.id} title={title}")
         return True
-    except Exception:
+    except Exception as e:
+        log.error(f"_save_to_minio_and_db error: {e}", exc_info=True)
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        return False
+
+
+def _save_to_vault(app, local_path: str, object_name: str, title: str, artist: str = "",
+                   duration_sec: int = None, source_url: str = "", thumbnail_local_path: str = None):
+    """Save to the shared audioweb-library vault bucket (all users, even anonymous).
+    Idempotent — skips if object_name already in VaultSong table."""
+    import logging
+    log = logging.getLogger(__name__)
+    from services import MinIOService
+    from models import VaultSong
+    from extensions import db
+    try:
+        vault_bucket = app.config.get("MINIO_WIDE_BUCKET", "audioweb-library")
+        minio = MinIOService(
+            app.config["MINIO_ENDPOINT"],
+            app.config["MINIO_ACCESS_KEY"],
+            app.config["MINIO_SECRET_KEY"],
+            app.config["MINIO_SECURE"],
+        )
+        minio.ensure_wide_bucket(vault_bucket)
+        existing = VaultSong.query.filter_by(object_name=object_name).first()
+        if existing:
+            log.info(f"Vault: already exists {object_name}")
+            return True
+        if not os.path.isfile(local_path):
+            log.warning(f"Vault: file not found {local_path}")
+            return False
+        file_size = os.path.getsize(local_path)
+        ok = minio.put_file(vault_bucket, object_name, local_path)
+        if not ok:
+            log.error(f"Vault: MinIO upload failed {object_name}")
+            return False
+        thumb_obj = None
+        if thumbnail_local_path and os.path.isfile(thumbnail_local_path):
+            base, _ = os.path.splitext(object_name)
+            ext = os.path.splitext(thumbnail_local_path)[1].lstrip(".") or "jpg"
+            thumb_obj = f"{base}.{ext}"
+            minio.put_file(vault_bucket, thumb_obj, thumbnail_local_path)
+        vault_song = VaultSong(
+            object_name=object_name,
+            title=title,
+            artist=artist,
+            duration_sec=int(duration_sec) if duration_sec else None,
+            source_url=source_url or None,
+            file_size=file_size,
+            thumbnail_path=thumb_obj,
+        )
+        db.session.add(vault_song)
+        db.session.commit()
+        log.info(f"Vault: saved {object_name}")
+        return True
+    except Exception as e:
+        log.error(f"_save_to_vault error: {e}", exc_info=True)
         try:
             db.session.rollback()
         except Exception:
@@ -319,6 +400,18 @@ def start_download():
                         if not os.path.isfile(thumb_path):
                             thumb_path = None
 
+                    # Always save to the shared vault (logged-in or anonymous)
+                    vault_obj = f"Vault/{os.path.basename(final_path)}"
+                    with app.app_context():
+                        _save_to_vault(
+                            app, final_path, vault_obj,
+                            title=title,
+                            artist=meta.get("artist", ""),
+                            duration_sec=int(meta["duration_sec"]) if meta.get("duration_sec") else None,
+                            source_url=url,
+                            thumbnail_local_path=thumb_path,
+                        )
+
                     # Save to MinIO + DB for logged-in users who opted in
                     if save_to_library and user_bucket and user:
                         if playlist_folder:
@@ -327,7 +420,7 @@ def start_download():
                             object_name = f"Downloads/{os.path.basename(final_path)}"
                         dur = meta.get("duration_sec")
                         with app.app_context():
-                            _save_to_minio_and_db(
+                            saved = _save_to_minio_and_db(
                                 app, user.id, user_bucket, final_path, object_name,
                                 title=title,
                                 artist=meta.get("artist", ""),
@@ -336,7 +429,11 @@ def start_download():
                                 source_url=url,
                                 thumbnail_local_path=thumb_path,
                             )
-                        q.put({"type": "saved_to_library", "url": url, "title": title})
+                        if saved:
+                            q.put({"type": "saved_to_library", "url": url, "title": title})
+                        else:
+                            q.put({"type": "library_error", "url": url, "title": title,
+                                   "message": "Upload to storage failed — check MinIO connection and logs."})
 
                     if is_playlist:
                         q.put({"type": "track_done", "url": url, "title": title})
@@ -377,6 +474,21 @@ def start_download():
 
     threading.Thread(target=do_download, daemon=True).start()
     return jsonify({"session_id": session_id, "is_playlist": is_playlist})
+
+
+@yt_download_bp.route("/api/session-status/<session_id>")
+def session_status(session_id):
+    """Returns whether a download session is still alive on the server."""
+    session = sessions.get(session_id)
+    if not session:
+        return jsonify({"exists": False})
+    zip_ready = bool(session.get("zip_path") and os.path.isfile(session.get("zip_path", "")))
+    return jsonify({
+        "exists": True,
+        "zip_ready": zip_ready,
+        "zip_name": session.get("zip_name", ""),
+        "file_count": len(session.get("files", {})),
+    })
 
 
 @yt_download_bp.route("/api/serve/<session_id>/<path:filename>")
